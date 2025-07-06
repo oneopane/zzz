@@ -26,6 +26,7 @@ pub const Middlewares = @import("middlewares/lib.zig");
 pub const FsDir = @import("router/fs_dir.zig").FsDir;
 
 pub const Server = @import("server.zig").Server;
+pub const ServerConfig = @import("server.zig").ServerConfig;
 
 pub const HTTPError = error{
     TooManyHeaders,
