@@ -52,7 +52,7 @@ pub fn main() !void {
     const static_dir = Dir.from_std(try std.fs.cwd().openDir("examples/fs/static", .{}));
 
     var router = try Router.init(allocator, &.{
-        Compression(.{ .gzip = .{} }),
+        Compression(.gzip),
         Route.init("/").get({}, base_handler).layer(),
         FsDir.serve("/", static_dir),
     }, .{});

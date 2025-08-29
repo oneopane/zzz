@@ -261,7 +261,7 @@ pub const Server = struct {
                     const recv_count = secure.recv(rt, provision.recv_slice) catch |e| switch (e) {
                         error.Closed => break,
                         else => {
-                            log.debug("recv failed on socket | {}", .{e});
+                            log.debug("recv failed on socket | {any}", .{e});
                             break;
                         },
                     };
@@ -287,7 +287,7 @@ pub const Server = struct {
                             },
                         );
 
-                        log.info("rt{d} - \"{s} {s}\" {s} ({})", .{
+                        log.info("rt{d} - \"{s} {s}\" {s} ({any})", .{
                             rt.id,
                             @tagName(provision.request.method.?),
                             provision.request.uri.?,
@@ -323,7 +323,7 @@ pub const Server = struct {
                     const recv_count = secure.recv(rt, provision.recv_slice) catch |e| switch (e) {
                         error.Closed => break,
                         else => {
-                            log.debug("recv failed on socket | {}", .{e});
+                            log.debug("recv failed on socket | {any}", .{e});
                             break;
                         },
                     };
@@ -377,7 +377,7 @@ pub const Server = struct {
                 };
 
                 const next_respond: Respond = next.run() catch |e| blk: {
-                    log.warn("rt{d} - \"{s} {s}\" {} ({})", .{
+                    log.warn("rt{d} - \"{s} {s}\" {any} ({any})", .{
                         rt.id,
                         @tagName(provision.request.method.?),
                         provision.request.uri.?,
@@ -433,7 +433,7 @@ pub const Server = struct {
                     const send_slice = pseudo.get(sent, sent + provision.recv_slice.len);
 
                     const sent_length = secure.send_all(rt, send_slice) catch |e| {
-                        log.debug("send failed on socket | {}", .{e});
+                        log.debug("send failed on socket | {any}", .{e});
                         break;
                     };
                     if (sent_length != send_slice.len) break :http_loop;
@@ -455,7 +455,7 @@ pub const Server = struct {
             },
         };
 
-        log.info("connection ({}) closed", .{secure.socket.addr});
+        log.info("connection ({any}) closed", .{secure.socket.addr});
 
         if (!accept_queued.*) {
             try rt.spawn(

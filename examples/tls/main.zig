@@ -54,7 +54,7 @@ pub fn main() !void {
 
     var router = try Router.init(allocator, &.{
         Route.init("/").get({}, root_handler).layer(),
-        Compression(.{ .gzip = .{} }),
+        Compression(.gzip),
         Route.init("/embed/pico.min.css").embed_file(
             .{ .mime = http.Mime.CSS },
             @embedFile("embed/pico.min.css"),
