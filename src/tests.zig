@@ -14,6 +14,9 @@ test "zzz unit tests" {
     testing.refAllDecls(@import("./http/common/status.zig"));
     testing.refAllDecls(@import("./http/common/form.zig"));
 
+    // HTTP Client
+    testing.refAllDecls(@import("./http/client/connection.zig"));
+
     // HTTP Server
     testing.refAllDecls(@import("./http/server/context.zig"));
     testing.refAllDecls(@import("./http/server/request.zig"));

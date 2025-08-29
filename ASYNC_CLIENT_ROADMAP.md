@@ -548,8 +548,8 @@ zig build run-example-connection-pool
 | Phase | Status | Completion | Notes |
 |-------|--------|------------|-------|
 | Phase 1: URL Utilities & Query Parameters | ✅ Complete | 100% | Stubs created, architecture finalized |
-| Phase 2: Basic Connection | ⏳ Pending | 0% | Ready to implement |
-| Phase 3: Request Serialization | ⏳ Pending | 0% | Architecture defined |
+| Phase 2: Basic Connection | ✅ Complete | 100% | TCP connection implemented with tardy, tests passing |
+| Phase 3: Request Serialization | ⏳ Pending | 0% | Architecture defined, ready to implement |
 | Phase 4: Response Parsing | ⏳ Pending | 0% | |
 | Phase 5: Basic HTTP Client | ⏳ Pending | 0% | |
 | Phase 6: POST Support | ⏳ Pending | 0% | |
@@ -559,11 +559,24 @@ zig build run-example-connection-pool
 
 ## Next Steps
 
-1. **Phase 2 Implementation**: Implement connection management in `connection.zig`
-2. **Create test file**: `src/http/client/connection_test.zig`
-3. **Run tests**: `zig test src/http/client/connection_test.zig`
-4. **Verify with tardy**: Test async socket operations with runtime
-5. **Update roadmap**: Document lessons learned and move to Phase 3
+1. **Phase 3 Implementation**: Implement request serialization in `request.zig`
+2. **Create ClientRequest struct**: Method, URI, headers, body management
+3. **Implement serialization**: Generate HTTP/1.1 request format
+4. **Test request building**: Unit tests for various request types
+5. **Update roadmap**: Document progress and move to Phase 4
+
+## Implementation Log
+
+### Phase 2: Basic Connection (Completed 2025-08-29)
+- ✅ Implemented Connection struct with state management
+- ✅ Created init/deinit methods for resource management
+- ✅ Implemented connect() using tardy Socket API
+- ✅ Added send_all() and recv_all() for raw byte operations
+- ✅ Implemented close() and is_alive() methods
+- ✅ Added comprehensive unit tests (6 tests, all passing)
+- ✅ Integrated with existing test suite
+- **Key Learning**: tardy uses Socket.send/recv methods (not Runtime methods)
+- **Note**: TLS support deferred to Phase 7 (returns error.TLSNotImplementedYet)
 
 ---
 
