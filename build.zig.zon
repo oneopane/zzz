@@ -4,6 +4,9 @@
     .version = "0.3.0",
     .minimum_zig_version = "0.14.0",
     .dependencies = .{
+        // TODO: Change these to proper git URLs once tardy and secsock
+        // are officially released for Zig 0.15.1. Currently using local
+        // paths because we ported these dependencies ourselves.
         .tardy = .{ .path = "../tardy" },
         .secsock = .{ .path = "../secsock" },
     },

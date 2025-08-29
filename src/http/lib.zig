@@ -36,3 +36,6 @@ pub const HTTPError = error{
     URITooLong,
     HTTPVersionNotSupported,
 };
+
+// Client module
+pub const Client = @import("client/lib.zig");
