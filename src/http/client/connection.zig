@@ -244,24 +244,17 @@ test "Connection.is_alive returns correct status" {
     try std.testing.expect(conn.is_alive());
 }
 
-test "Connection.send_all returns error when not connected" {
+test "Connection methods require connected state" {
     const allocator = std.testing.allocator;
     
     var conn = try Connection.init(allocator, "127.0.0.1", 8080, false);
     defer conn.deinit();
     
-    // Should fail when disconnected (we check state before using runtime)
+    // Both send_all and recv_all should fail when disconnected
+    // We verify this by checking the state preconditions
     try std.testing.expectEqual(conn.state, .disconnected);
     try std.testing.expect(!conn.is_alive());
-}
-
-test "Connection.recv_all returns error when not connected" {
-    const allocator = std.testing.allocator;
     
-    var conn = try Connection.init(allocator, "127.0.0.1", 8080, false);
-    defer conn.deinit();
-    
-    // Should fail when disconnected (we check state before using runtime) 
-    try std.testing.expectEqual(conn.state, .disconnected);
-    try std.testing.expect(!conn.is_alive());
+    // The actual send_all and recv_all methods check state before using runtime
+    // so we don't need to call them with undefined runtime
 }

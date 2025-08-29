@@ -100,7 +100,7 @@ test "raw HTTP connection" {
 ---
 
 ### Phase 3: Request Serialization 📤
-**Status:** ⏳ Pending  
+**Status:** ✅ Complete  
 **Files:** `src/http/client/request.zig`
 
 #### Architecture Decision
@@ -108,14 +108,16 @@ test "raw HTTP connection" {
 - Leverage `url.writeRequestTarget()` for proper HTTP/1.1 request-target generation
 - Support all HTTP/1.1 request forms (origin, absolute, authority, asterisk)
 
-#### Implement
-- `ClientRequest.init()` - Create request with method and parsed `std.Uri`
-- `ClientRequest.deinit()` - Clean up resources
-- `ClientRequest.set_header()` - Add/update headers
-- `ClientRequest.set_body()` - Set request body
-- `ClientRequest.serialize_headers()` - Generate HTTP request headers
-- `ClientRequest.serialize_full()` - Generate complete HTTP request
-- Use `url.writeRequestTarget()` for path generation
+#### Implemented
+- ✅ `ClientRequest.init()` - Create request with method and parsed `std.Uri`
+- ✅ `ClientRequest.deinit()` - Clean up resources with proper memory management
+- ✅ `ClientRequest.set_header()` - Add/update headers with memory allocation
+- ✅ `ClientRequest.set_body()` - Set request body (reference, not owned)
+- ✅ `ClientRequest.serialize_headers()` - Generate HTTP/1.1 request headers
+- ✅ `ClientRequest.serialize_full()` - Generate complete HTTP request with body
+- ✅ Use `url.writeRequestTarget()` for proper path generation
+- ✅ Automatic Host header generation with port handling
+- ✅ Content-Length header management with override support
 
 #### Verification
 ```zig
@@ -549,7 +551,7 @@ zig build run-example-connection-pool
 |-------|--------|------------|-------|
 | Phase 1: URL Utilities & Query Parameters | ✅ Complete | 100% | Stubs created, architecture finalized |
 | Phase 2: Basic Connection | ✅ Complete | 100% | TCP connection implemented with tardy, tests passing |
-| Phase 3: Request Serialization | ⏳ Pending | 0% | Architecture defined, ready to implement |
+| Phase 3: Request Serialization | ✅ Complete | 100% | All methods implemented, 9 tests passing |
 | Phase 4: Response Parsing | ⏳ Pending | 0% | |
 | Phase 5: Basic HTTP Client | ⏳ Pending | 0% | |
 | Phase 6: POST Support | ⏳ Pending | 0% | |
@@ -559,13 +561,26 @@ zig build run-example-connection-pool
 
 ## Next Steps
 
-1. **Phase 3 Implementation**: Implement request serialization in `request.zig`
-2. **Create ClientRequest struct**: Method, URI, headers, body management
-3. **Implement serialization**: Generate HTTP/1.1 request format
-4. **Test request building**: Unit tests for various request types
-5. **Update roadmap**: Document progress and move to Phase 4
+1. **Phase 4 Implementation**: Implement response parsing in `response.zig`
+2. **Create ClientResponse struct**: Status, headers, body parsing
+3. **Handle response variations**: Success, redirects, errors, chunked encoding
+4. **Test response parsing**: Unit tests for various response types
+5. **Update roadmap**: Document progress and move to Phase 5
 
 ## Implementation Log
+
+### Phase 3: Request Serialization (Completed 2025-08-29)
+- ✅ Implemented ClientRequest struct with std.Uri integration
+- ✅ Created init/deinit with proper memory management for headers
+- ✅ Implemented set_header() with duplicate detection and memory cleanup
+- ✅ Added set_body() for request body management
+- ✅ Implemented serialize_headers() using url.writeRequestTarget()
+- ✅ Added serialize_full() for complete request serialization
+- ✅ Automatic Host header generation with smart port handling
+- ✅ Content-Length header auto-calculation with manual override support
+- ✅ Added comprehensive unit tests (9 tests, all passing)
+- **Key Design**: Direct std.Uri usage without wrapper types
+- **Memory Model**: Headers owned by request, body referenced (not owned)
 
 ### Phase 2: Basic Connection (Completed 2025-08-29)
 - ✅ Implemented Connection struct with state management

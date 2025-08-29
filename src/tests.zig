@@ -16,6 +16,7 @@ test "zzz unit tests" {
 
     // HTTP Client
     testing.refAllDecls(@import("./http/client/connection.zig"));
+    testing.refAllDecls(@import("./http/client/request.zig"));
 
     // HTTP Server
     testing.refAllDecls(@import("./http/server/context.zig"));
