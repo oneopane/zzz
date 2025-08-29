@@ -36,12 +36,17 @@ pub fn build(b: *std.Build) void {
         add_example(b, "unix", false, target, optimize, zzz);
     }
 
+    const test_mod = b.createModule(.{
+        .root_source_file = b.path("./src/tests.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
     const tests = b.addTest(.{
         .name = "tests",
-        .root_source_file = b.path("./src/tests.zig"),
+        .root_module = test_mod,
     });
-    tests.root_module.addImport("tardy", tardy);
-    tests.root_module.addImport("secsock", secsock);
+    test_mod.addImport("tardy", tardy);
+    test_mod.addImport("secsock", secsock);
 
     const run_test = b.addRunArtifact(tests);
     run_test.step.dependOn(&tests.step);
@@ -55,22 +60,24 @@ fn add_example(
     name: []const u8,
     link_libc: bool,
     target: std.Build.ResolvedTarget,
-    optimize: std.builtin.Mode,
+    optimize: std.builtin.OptimizeMode,
     zzz_module: *std.Build.Module,
 ) void {
-    const example = b.addExecutable(.{
-        .name = name,
+    const exe_mod = b.createModule(.{
         .root_source_file = b.path(b.fmt("./examples/{s}/main.zig", .{name})),
         .target = target,
         .optimize = optimize,
-        .strip = false,
+    });
+    const example = b.addExecutable(.{
+        .name = name,
+        .root_module = exe_mod,
     });
 
     if (link_libc) {
-        example.linkLibC();
+        exe_mod.link_libc = true;
     }
 
-    example.root_module.addImport("zzz", zzz_module);
+    exe_mod.addImport("zzz", zzz_module);
 
     const install_artifact = b.addInstallArtifact(example, .{});
     b.getInstallStep().dependOn(&install_artifact.step);
