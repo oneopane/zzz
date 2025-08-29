@@ -4,8 +4,8 @@ const Method = @import("../lib.zig").Method;
 const Uri = std.Uri;
 const url = @import("url.zig").url;
 const AnyCaseStringMap = @import("../../core/any_case_string_map.zig").AnyCaseStringMap;
-const CookieMap = @import("../cookie.zig").CookieMap;
-const Cookie = @import("../cookie.zig").Cookie;
+const CookieMap = @import("../common/cookie.zig").CookieMap;
+const Cookie = @import("../common/cookie.zig").Cookie;
 
 pub const ClientRequest = struct {
     allocator: std.mem.Allocator,

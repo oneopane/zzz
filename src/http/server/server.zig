@@ -4,9 +4,9 @@ const tag = builtin.os.tag;
 const assert = std.debug.assert;
 const log = std.log.scoped(.@"zzz/http/server");
 
-const TypedStorage = @import("../core/typed_storage.zig").TypedStorage;
-const Pseudoslice = @import("../core/pseudoslice.zig").Pseudoslice;
-const AnyCaseStringMap = @import("../core/any_case_string_map.zig").AnyCaseStringMap;
+const TypedStorage = @import("../../core/typed_storage.zig").TypedStorage;
+const Pseudoslice = @import("../../core/pseudoslice.zig").Pseudoslice;
+const AnyCaseStringMap = @import("../../core/any_case_string_map.zig").AnyCaseStringMap;
 
 const Context = @import("context.zig").Context;
 const Request = @import("request.zig").Request;
@@ -15,12 +15,12 @@ const Respond = @import("response.zig").Respond;
 const Capture = @import("router/routing_trie.zig").Capture;
 const SSE = @import("sse.zig").SSE;
 
-const Mime = @import("mime.zig").Mime;
+const Mime = @import("../common/mime.zig").Mime;
 const Router = @import("router.zig").Router;
 const Route = @import("router/route.zig").Route;
 const Layer = @import("router/middleware.zig").Layer;
 const Middleware = @import("router/middleware.zig").Middleware;
-const HTTPError = @import("lib.zig").HTTPError;
+const HTTPError = @import("../lib.zig").HTTPError;
 
 const HandlerWithData = @import("router/route.zig").HandlerWithData;
 

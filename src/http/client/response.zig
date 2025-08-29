@@ -2,7 +2,7 @@ const std = @import("std");
 
 const Status = @import("../lib.zig").Status;
 const AnyCaseStringMap = @import("../../core/any_case_string_map.zig").AnyCaseStringMap;
-const CookieMap = @import("../cookie.zig").CookieMap;
+const CookieMap = @import("../common/cookie.zig").CookieMap;
 
 pub const ClientResponse = struct {
     allocator: std.mem.Allocator,
@@ -81,7 +81,6 @@ pub const ClientResponse = struct {
     // Body handling
     pub fn json(self: *const ClientResponse, comptime T: type) !T {
         _ = self;
-        _ = T;
         @panic("Not implemented");
     }
 

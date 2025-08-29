@@ -3,11 +3,11 @@ const std = @import("std");
 const Runtime = @import("tardy").Runtime;
 const HTTPClient = @import("client.zig").HTTPClient;
 const ClientResponse = @import("response.zig").ClientResponse;
-const Request = @import("../request.zig").Request;
-const Response = @import("../response.zig").Response;
-const Respond = @import("../response.zig").Respond;
-const Context = @import("../context.zig").Context;
-const Middleware = @import("../router/middleware.zig").Middleware;
+const Request = @import("../server/request.zig").Request;
+const Response = @import("../server/response.zig").Response;
+const Respond = @import("../server/response.zig").Respond;
+const Context = @import("../server/context.zig").Context;
+const Middleware = @import("../server/router/middleware.zig").Middleware;
 
 pub const LoadBalanceStrategy = enum {
     round_robin,

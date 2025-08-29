@@ -8,8 +8,8 @@ const SecureSocket = secsock.SecureSocket;
 
 const Capture = @import("router/routing_trie.zig").Capture;
 
-const TypedStorage = @import("../core/typed_storage.zig").TypedStorage;
-const AnyCaseStringMap = @import("../core/any_case_string_map.zig").AnyCaseStringMap;
+const TypedStorage = @import("../../core/typed_storage.zig").TypedStorage;
+const AnyCaseStringMap = @import("../../core/any_case_string_map.zig").AnyCaseStringMap;
 
 /// HTTP Context. Contains all of the various information
 /// that will persist throughout the lifetime of this Request/Response.

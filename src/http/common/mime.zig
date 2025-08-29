@@ -1,7 +1,7 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const Pair = @import("../core/lib.zig").Pair;
+const Pair = @import("../../core/lib.zig").Pair;
 
 const MimeOption = union(enum) {
     single: []const u8,

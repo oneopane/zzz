@@ -7,20 +7,20 @@ test "zzz unit tests" {
     testing.refAllDecls(@import("./core/pseudoslice.zig"));
     testing.refAllDecls(@import("./core/typed_storage.zig"));
 
-    // HTTP
-    testing.refAllDecls(@import("./http/context.zig"));
-    testing.refAllDecls(@import("./http/date.zig"));
-    testing.refAllDecls(@import("./http/method.zig"));
-    testing.refAllDecls(@import("./http/mime.zig"));
-    testing.refAllDecls(@import("./http/request.zig"));
-    testing.refAllDecls(@import("./http/response.zig"));
-    testing.refAllDecls(@import("./http/server.zig"));
-    testing.refAllDecls(@import("./http/sse.zig"));
-    testing.refAllDecls(@import("./http/status.zig"));
-    testing.refAllDecls(@import("./http/form.zig"));
+    // HTTP Common
+    testing.refAllDecls(@import("./http/common/date.zig"));
+    testing.refAllDecls(@import("./http/common/method.zig"));
+    testing.refAllDecls(@import("./http/common/mime.zig"));
+    testing.refAllDecls(@import("./http/common/status.zig"));
+    testing.refAllDecls(@import("./http/common/form.zig"));
 
-    // Router
-    testing.refAllDecls(@import("./http/router.zig"));
-    testing.refAllDecls(@import("./http/router/route.zig"));
-    testing.refAllDecls(@import("./http/router/routing_trie.zig"));
+    // HTTP Server
+    testing.refAllDecls(@import("./http/server/context.zig"));
+    testing.refAllDecls(@import("./http/server/request.zig"));
+    testing.refAllDecls(@import("./http/server/response.zig"));
+    testing.refAllDecls(@import("./http/server/server.zig"));
+    testing.refAllDecls(@import("./http/server/sse.zig"));
+    testing.refAllDecls(@import("./http/server/router.zig"));
+    testing.refAllDecls(@import("./http/server/router/route.zig"));
+    testing.refAllDecls(@import("./http/server/router/routing_trie.zig"));
 }

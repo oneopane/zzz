@@ -1,5 +1,5 @@
 const std = @import("std");
-const form = @import("../form.zig");
+const form = @import("../common/form.zig");
 
 /// Query parameter builder and parser for HTTP client
 /// Handles URL encoding/decoding and parameter manipulation

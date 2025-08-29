@@ -6,7 +6,7 @@ const Route = @import("route.zig").Route;
 const Layer = @import("middleware.zig").Layer;
 const Request = @import("../request.zig").Request;
 const Respond = @import("../response.zig").Respond;
-const Mime = @import("../mime.zig").Mime;
+const Mime = @import("../../common/mime.zig").Mime;
 const Context = @import("../context.zig").Context;
 
 const Runtime = @import("tardy").Runtime;

@@ -6,13 +6,13 @@ const Layer = @import("middleware.zig").Layer;
 const Route = @import("route.zig").Route;
 
 const Respond = @import("../response.zig").Respond;
-const Context = @import("../lib.zig").Context;
+const Context = @import("../../lib.zig").Context;
 
 const HandlerWithData = @import("route.zig").HandlerWithData;
 const MiddlewareWithData = @import("middleware.zig").MiddlewareWithData;
-const AnyCaseStringMap = @import("../../core/any_case_string_map.zig").AnyCaseStringMap;
+const AnyCaseStringMap = @import("../../../core/any_case_string_map.zig").AnyCaseStringMap;
 
-const decode_alloc = @import("../form.zig").decode_alloc;
+const decode_alloc = @import("../../common/form.zig").decode_alloc;
 
 fn TokenHashMap(comptime V: type) type {
     return std.HashMap(Token, V, struct {

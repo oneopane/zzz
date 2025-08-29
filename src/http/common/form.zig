@@ -1,8 +1,8 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const AnyCaseStringMap = @import("../core/any_case_string_map.zig").AnyCaseStringMap;
-const Context = @import("context.zig").Context;
+const AnyCaseStringMap = @import("../../core/any_case_string_map.zig").AnyCaseStringMap;
+const Context = @import("../server/context.zig").Context;
 
 pub fn decode_alloc(allocator: std.mem.Allocator, input: []const u8) ![]const u8 {
     var list = try std.ArrayListUnmanaged(u8).initCapacity(allocator, input.len);

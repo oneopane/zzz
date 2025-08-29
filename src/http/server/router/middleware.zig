@@ -4,11 +4,11 @@ const assert = std.debug.assert;
 
 const Runtime = @import("tardy").Runtime;
 
-const wrap = @import("../../core/wrapping.zig").wrap;
-const Pseudoslice = @import("../../core/pseudoslice.zig").Pseudoslice;
+const wrap = @import("../../../core/wrapping.zig").wrap;
+const Pseudoslice = @import("../../../core/pseudoslice.zig").Pseudoslice;
 const Server = @import("../server.zig").Server;
 
-const Mime = @import("../mime.zig").Mime;
+const Mime = @import("../../common/mime.zig").Mime;
 const Route = @import("route.zig").Route;
 const HandlerWithData = @import("route.zig").HandlerWithData;
 const Context = @import("../context.zig").Context;

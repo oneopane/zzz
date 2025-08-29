@@ -2,10 +2,10 @@ const std = @import("std");
 const log = std.log.scoped(.@"zzz/http/request");
 const assert = std.debug.assert;
 
-const AnyCaseStringMap = @import("../core/any_case_string_map.zig").AnyCaseStringMap;
-const CookieMap = @import("cookie.zig").CookieMap;
-const HTTPError = @import("lib.zig").HTTPError;
-const Method = @import("lib.zig").Method;
+const AnyCaseStringMap = @import("../../core/any_case_string_map.zig").AnyCaseStringMap;
+const CookieMap = @import("../common/cookie.zig").CookieMap;
+const HTTPError = @import("../lib.zig").HTTPError;
+const Method = @import("../lib.zig").Method;
 
 pub const Request = struct {
     allocator: std.mem.Allocator,

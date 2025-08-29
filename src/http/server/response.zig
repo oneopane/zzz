@@ -1,10 +1,10 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const AnyCaseStringMap = @import("../core/any_case_string_map.zig").AnyCaseStringMap;
-const Status = @import("lib.zig").Status;
-const Mime = @import("lib.zig").Mime;
-const Date = @import("lib.zig").Date;
+const AnyCaseStringMap = @import("../../core/any_case_string_map.zig").AnyCaseStringMap;
+const Status = @import("../lib.zig").Status;
+const Mime = @import("../lib.zig").Mime;
+const Date = @import("../lib.zig").Date;
 
 const Stream = @import("tardy").Stream;
 

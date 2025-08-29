@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const Mime = @import("../mime.zig").Mime;
+const Mime = @import("../../common/mime.zig").Mime;
 const Respond = @import("../response.zig").Respond;
 const Response = @import("../response.zig").Response;
 const Middleware = @import("../router/middleware.zig").Middleware;

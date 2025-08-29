@@ -1,10 +1,10 @@
 const std = @import("std");
 
-const Pseudoslice = @import("../core/pseudoslice.zig").Pseudoslice;
+const Pseudoslice = @import("../../core/pseudoslice.zig").Pseudoslice;
 
 const Provision = @import("server.zig").Provision;
 const Context = @import("context.zig").Context;
-const Mime = @import("mime.zig").Mime;
+const Mime = @import("../common/mime.zig").Mime;
 
 const Runtime = @import("tardy").Runtime;
 

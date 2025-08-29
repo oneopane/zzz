@@ -12,11 +12,11 @@ const Capture = @import("router/routing_trie.zig").Capture;
 const Request = @import("request.zig").Request;
 const Response = @import("response.zig").Response;
 const Respond = @import("response.zig").Respond;
-const Mime = @import("mime.zig").Mime;
+const Mime = @import("../common/mime.zig").Mime;
 const Context = @import("context.zig").Context;
 
 const RoutingTrie = @import("router/routing_trie.zig").RoutingTrie;
-const AnyCaseStringMap = @import("../core/any_case_string_map.zig").AnyCaseStringMap;
+const AnyCaseStringMap = @import("../../core/any_case_string_map.zig").AnyCaseStringMap;
 
 /// Default not found handler: send a plain text response.
 pub const default_not_found_handler = struct {
