@@ -144,8 +144,8 @@ test "Parse Basic Date (Writer)" {
     var date: Date = Date.init(ts);
     const http_date = date.to_http_date();
     var buffer = [_]u8{0} ** 29;
-    var stream = std.io.fixedBufferStream(buffer[0..]);
-    try http_date.into_writer(stream.writer());
-    const http_string = stream.getWritten();
+    var fbs = std.io.fixedBufferStream(&buffer);
+    try http_date.into_writer(fbs.writer());
+    const http_string = fbs.getWritten();
     try testing.expectEqualStrings("Wed, 24 Apr 1991 00:15:12 GMT", http_string);
 }

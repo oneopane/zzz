@@ -10,5 +10,5 @@ pub fn main() !void {
     defer list.deinit(allocator);
     
     try list.append(allocator, 42);
-    std.debug.print("Value: {}\n", .{list.items[0]});
+    std.debug.print("Value: {d}\n", .{list.items[0]});
 }
