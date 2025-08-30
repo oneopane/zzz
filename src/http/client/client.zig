@@ -33,8 +33,7 @@ pub const HTTPClient = struct {
 
     // High-level methods
     pub fn get(self: *HTTPClient, url: []const u8) !ClientResponse {
-        const uri = try std.Uri.parse(url);
-        var req = try ClientRequest.init(self.allocator, .GET, uri);
+        var req = try ClientRequest.init(self.allocator, .GET, url);
         defer req.deinit();
         
         return self.execute_request(&req);
@@ -61,8 +60,7 @@ pub const HTTPClient = struct {
     }
 
     pub fn head(self: *HTTPClient, url: []const u8) !ClientResponse {
-        const uri = try std.Uri.parse(url);
-        var req = try ClientRequest.init(self.allocator, .HEAD, uri);
+        var req = try ClientRequest.init(self.allocator, .HEAD, url);
         defer req.deinit();
         
         return self.execute_request(&req);
@@ -89,16 +87,19 @@ pub const HTTPClient = struct {
             var it = headers.iterator();
             while (it.next()) |entry| {
                 // Don't override existing headers
-                if (req.get_header(entry.key_ptr.*) == null) {
-                    try req.set_header(entry.key_ptr.*, entry.value_ptr.*);
+                if (!req.headers.contains(entry.key_ptr.*)) {
+                    _ = try req.set_header(entry.key_ptr.*, entry.value_ptr.*);
                 }
             }
         }
         
         // Parse the host and port from the URI
         var host_buf: [256]u8 = undefined;
-        const host = req.uri.host orelse return error.NoHostInURI;
-        const host_str = try std.fmt.bufPrint(&host_buf, "{s}", .{host});
+        const host_component = req.uri.host orelse return error.NoHostInURI;
+        const host_str = switch (host_component) {
+            .raw => |raw| raw,
+            .percent_encoded => |encoded| std.Uri.percentDecodeBackwards(&host_buf, encoded),
+        };
         
         const default_port: u16 = if (std.ascii.eqlIgnoreCase(req.uri.scheme, "https")) 443 else 80;
         const port = req.uri.port orelse default_port;
@@ -112,16 +113,16 @@ pub const HTTPClient = struct {
         try conn.connect(self.runtime);
         
         // Serialize and send the request
-        var request_buf = std.ArrayList(u8).init(self.allocator);
-        defer request_buf.deinit();
+        var request_buf = try std.ArrayList(u8).initCapacity(self.allocator, 4096);
+        defer request_buf.deinit(self.allocator);
         
-        try req.serialize_full(request_buf.writer());
+        try req.serialize_full(request_buf.writer(self.allocator));
         try conn.send_all(self.runtime, request_buf.items);
         
         // Receive the response
         // Start with initial buffer for headers
-        var response_buf = std.ArrayList(u8).init(self.allocator);
-        defer response_buf.deinit();
+        var response_buf = try std.ArrayList(u8).initCapacity(self.allocator, 8192);
+        defer response_buf.deinit(self.allocator);
         
         // Read initial chunk (headers + some body)
         var initial_buf: [8192]u8 = undefined;
@@ -131,7 +132,7 @@ pub const HTTPClient = struct {
             return error.EmptyResponse;
         }
         
-        try response_buf.appendSlice(initial_buf[0..initial_bytes]);
+        try response_buf.appendSlice(self.allocator, initial_buf[0..initial_bytes]);
         
         // Parse the response
         var response = ClientResponse.init(self.allocator);
@@ -144,12 +145,12 @@ pub const HTTPClient = struct {
             // Check if we need to read more data
             if (response.is_chunked()) {
                 // Handle chunked encoding
-                var full_body = std.ArrayList(u8).init(self.allocator);
-                defer full_body.deinit();
+                var full_body = try std.ArrayList(u8).initCapacity(self.allocator, 8192);
+                defer full_body.deinit(self.allocator);
                 
                 // Add what we already have after headers
                 if (header_size < response_buf.items.len) {
-                    try full_body.appendSlice(response_buf.items[header_size..]);
+                    try full_body.appendSlice(self.allocator, response_buf.items[header_size..]);
                 }
                 
                 // Continue reading until we get all chunks
@@ -161,7 +162,7 @@ pub const HTTPClient = struct {
                     };
                     
                     if (chunk_bytes == 0) break;
-                    try full_body.appendSlice(chunk_buf[0..chunk_bytes]);
+                    try full_body.appendSlice(self.allocator, chunk_buf[0..chunk_bytes]);
                     
                     // Check if we've received the final chunk (0\r\n\r\n)
                     if (full_body.items.len >= 5) {
@@ -173,7 +174,8 @@ pub const HTTPClient = struct {
                 }
                 
                 // Parse chunked body
-                try response.parse_chunked_body(full_body.items);
+                var stream = std.io.fixedBufferStream(full_body.items);
+                try response.parse_chunked_body(stream.reader());
             } else if (response.get_content_length()) |content_length| {
                 // Read exact content length
                 const body_start = if (header_size < response_buf.items.len) 
@@ -183,10 +185,10 @@ pub const HTTPClient = struct {
                 
                 if (body_start.len < content_length) {
                     // Need to read more
-                    var full_body = std.ArrayList(u8).init(self.allocator);
-                    defer full_body.deinit();
+                    var full_body = try std.ArrayList(u8).initCapacity(self.allocator, 8192);
+                    defer full_body.deinit(self.allocator);
                     
-                    try full_body.appendSlice(body_start);
+                    try full_body.appendSlice(self.allocator, body_start);
                     
                     while (full_body.items.len < content_length) {
                         var chunk_buf: [8192]u8 = undefined;
@@ -198,7 +200,7 @@ pub const HTTPClient = struct {
                             return error.UnexpectedEndOfStream;
                         }
                         
-                        try full_body.appendSlice(chunk_buf[0..chunk_bytes]);
+                        try full_body.appendSlice(self.allocator, chunk_buf[0..chunk_bytes]);
                     }
                     
                     try response.parse_body(full_body.items);
@@ -235,22 +237,24 @@ pub const HTTPClient = struct {
             // Get the Location header
             const location = current_response.get_location() orelse return error.MissingLocationHeader;
             
-            // Parse the new URL
-            const new_uri = std.Uri.parse(location) catch {
-                // If it's a relative URL, resolve it against the original URL
+            // Handle relative vs absolute URLs
+            const new_url = if (std.mem.startsWith(u8, location, "http://") or std.mem.startsWith(u8, location, "https://")) 
+                location
+            else blk: {
+                // Relative URL - need to resolve against original
                 var resolved_buf: [2048]u8 = undefined;
                 const resolved = try std.Uri.resolve_inplace(original_req.uri, location, &resolved_buf);
-                break try std.Uri.parse(resolved);
+                break :blk resolved;
             };
             
             // Create a new request with the redirect URL
-            var new_req = try ClientRequest.init(self.allocator, original_req.method, new_uri);
+            var new_req = try ClientRequest.init(self.allocator, original_req.method, new_url);
             defer new_req.deinit();
             
             // Copy headers from original request
             var it = original_req.headers.iterator();
             while (it.next()) |entry| {
-                try new_req.set_header(entry.key_ptr.*, entry.value_ptr.*);
+                _ = try new_req.set_header(entry.key_ptr.*, entry.value_ptr.*);
             }
             
             // Execute the new request

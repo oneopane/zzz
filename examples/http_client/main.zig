@@ -2,7 +2,7 @@ const std = @import("std");
 const zzz = @import("zzz");
 const tardy = zzz.tardy;
 
-const HTTPClient = zzz.http.client.HTTPClient;
+const HTTPClient = zzz.HTTP.Client.HTTPClient;
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};

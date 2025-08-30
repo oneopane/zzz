@@ -1,14 +1,11 @@
 const std = @import("std");
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
-
-    // Test ArrayList initialization
-    var list = std.ArrayList(u8){};
-    defer list.deinit(allocator);
-
-    try list.append(allocator, 42);
-    std.debug.print("Value: {d}\n", .{list.items[0]});
+test "ArrayList API" {
+    const allocator = std.testing.allocator;
+    
+    // Test current API
+    var list = std.ArrayList(u8).init(allocator);
+    defer list.deinit();
+    
+    try list.append('a');
 }
