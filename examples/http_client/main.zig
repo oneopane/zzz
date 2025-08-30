@@ -23,14 +23,19 @@ pub fn main() !void {
         ClientParams{ .allocator = allocator },
         struct {
             fn entry(rt: *tardy.Runtime, params: ClientParams) !void {
+                // Spawn a task to run the HTTP client operations
+                try rt.spawn(.{ rt, params.allocator }, client_task, 1024 * 1024);
+            }
+            
+            fn client_task(rt: *tardy.Runtime, alloc: std.mem.Allocator) !void {
                 // Create HTTP client with the provided runtime
-                var client = try HTTPClient.init(params.allocator, rt);
+                var client = try HTTPClient.init(alloc, rt);
                 defer client.deinit();
     
                 // Example: GET request
                 std.debug.print("Making GET request to http://httpbin.org/get\n", .{});
                 
-                const get_response = client.get("http://httpbin.org/get") catch |err| {
+                var get_response = client.get("http://httpbin.org/get") catch |err| {
                     std.debug.print("GET request failed: {}\n", .{err});
                     return;
                 };
@@ -53,7 +58,7 @@ pub fn main() !void {
                 // Example: HEAD request
                 std.debug.print("\nMaking HEAD request to http://httpbin.org/status/200\n", .{});
                 
-                const head_response = client.head("http://httpbin.org/status/200") catch |err| {
+                var head_response = client.head("http://httpbin.org/status/200") catch |err| {
                     std.debug.print("HEAD request failed: {}\n", .{err});
                     return;
                 };
@@ -66,7 +71,7 @@ pub fn main() !void {
                 std.debug.print("\nTesting redirect handling (max 2 redirects)\n", .{});
                 client.max_redirects = 2;
                 
-                const redirect_response = client.get("http://httpbin.org/redirect/1") catch |err| {
+                var redirect_response = client.get("http://httpbin.org/redirect/1") catch |err| {
                     std.debug.print("Redirect request failed: {}\n", .{err});
                     return;
                 };

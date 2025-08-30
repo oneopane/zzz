@@ -81,7 +81,7 @@ pub const HTTPClient = struct {
     }
 
     // Internal methods
-    fn execute_request(self: *HTTPClient, req: *ClientRequest) !ClientResponse {
+    fn execute_request_no_redirect(self: *HTTPClient, req: *ClientRequest) !ClientResponse {
         // Add default headers if they exist
         if (self.default_headers) |headers| {
             var it = headers.iterator();
@@ -216,9 +216,16 @@ pub const HTTPClient = struct {
             }
         }
         
+        return response;
+    }
+    
+    fn execute_request(self: *HTTPClient, req: *ClientRequest) !ClientResponse {
+        const response = try self.execute_request_no_redirect(req);
+        
         // Handle redirects if enabled
         if (self.follow_redirects and response.is_redirect()) {
-            return self.handle_redirects(&response, req);
+            var resp_copy = response;
+            return self.handle_redirects(&resp_copy, req);
         }
         
         return response;
@@ -234,31 +241,101 @@ pub const HTTPClient = struct {
                 redirect_count += 1;
             }
             
-            // Get the Location header
-            const location = current_response.get_location() orelse return error.MissingLocationHeader;
+            const location = current_response.get_location() 
+                orelse return error.MissingLocationHeader;
             
-            // Handle relative vs absolute URLs
-            const new_url = if (std.mem.startsWith(u8, location, "http://") or std.mem.startsWith(u8, location, "https://")) 
-                location
-            else blk: {
-                // Relative URL - need to resolve against original
-                var resolved_buf: [2048]u8 = undefined;
-                const resolved = try std.Uri.resolve_inplace(original_req.uri, location, &resolved_buf);
-                break :blk resolved;
+            // 1) Build a Uri for the redirect target (absolute or relative)
+            const new_uri: std.Uri = blk: {
+                // Fast check for absolute Location
+                if (std.mem.startsWith(u8, location, "http://") or
+                    std.mem.startsWith(u8, location, "https://"))
+                {
+                    break :blk try std.Uri.parse(location);
+                } else {
+                    // Relative: copy into an auxiliary buffer, then resolve in place
+                    var resolved_buf: [2048]u8 = undefined;
+                    if (location.len > resolved_buf.len)
+                        return error.LocationTooLong;
+                    
+                    // aux_buf is a *slice* that resolveInPlace may grow/modify
+                    var aux_buf: []u8 = resolved_buf[0..location.len];
+                    @memcpy(aux_buf, location);
+                    
+                    // This returns a Uri that *references* aux_buf contents
+                    const resolved = try std.Uri.resolveInPlace(original_req.uri, location.len, &aux_buf);
+                    break :blk resolved;
+                }
             };
             
-            // Create a new request with the redirect URL
-            var new_req = try ClientRequest.init(self.allocator, original_req.method, new_url);
-            defer new_req.deinit();
-            
-            // Copy headers from original request
-            var it = original_req.headers.iterator();
-            while (it.next()) |entry| {
-                _ = try new_req.set_header(entry.key_ptr.*, entry.value_ptr.*);
+            // OPTIONAL but recommended: normalize method/body per RFCs
+            // - 303: always switch to GET, drop body
+            // - 301/302: if original was POST, many clients switch to GET (pragmatic)
+            var follow_method = original_req.method;
+            var drop_body = false;
+            switch (@intFromEnum(current_response.status)) {
+                303 => { follow_method = .GET; drop_body = true; },
+                301, 302 => if (original_req.method == .POST) { 
+                    follow_method = .GET; 
+                    drop_body = true; 
+                },
+                307, 308 => {}, // keep method & body
+                else => {},
             }
             
-            // Execute the new request
-            current_response = try self.execute_request(&new_req);
+            // OPTIONAL security hygiene: if host/port/scheme changes, drop sensitive headers
+            const cross_origin = blk: {
+                // Check if schemes differ
+                if (!std.mem.eql(u8, new_uri.scheme, original_req.uri.scheme)) {
+                    break :blk true;
+                }
+                // Check if hosts differ (both must be present for comparison)
+                if (new_uri.host) |new_host| {
+                    if (original_req.uri.host) |orig_host| {
+                        if (!std.mem.eql(u8, new_host.percent_encoded, orig_host.percent_encoded)) {
+                            break :blk true;
+                        }
+                    } else {
+                        break :blk true;
+                    }
+                } else {
+                    break :blk true;
+                }
+                // Check if ports differ
+                if ((new_uri.port orelse 0) != (original_req.uri.port orelse 0)) {
+                    break :blk true;
+                }
+                break :blk false;
+            };
+            
+            // 2) Construct next request - render Uri to string since ClientRequest.init takes a string
+            const url_string = try std.fmt.allocPrint(self.allocator, "{any}", .{new_uri});
+            defer self.allocator.free(url_string);
+            
+            var new_req = try ClientRequest.init(self.allocator, follow_method, url_string);
+            defer new_req.deinit();
+            
+            // Copy/adjust headers from original request
+            var it = original_req.headers.iterator();
+            while (it.next()) |entry| {
+                const name = entry.key_ptr.*;
+                const value = entry.value_ptr.*;
+                // Skip Host; it's regenerated by ClientRequest.init
+                if (std.ascii.eqlIgnoreCase(name, "host")) continue;
+                // Drop sensitive headers on cross-origin redirects
+                if (cross_origin and (std.ascii.eqlIgnoreCase(name, "authorization") or
+                                     std.ascii.eqlIgnoreCase(name, "cookie"))) continue;
+                _ = try new_req.set_header(name, value);
+            }
+            
+            // If we're switching to GET or told to drop body, clear it
+            if (drop_body) {
+                new_req.body = null;
+            } else if (original_req.body) |b| {
+                _ = new_req.set_body(b);
+            }
+            
+            // Finally execute (without redirect handling to avoid recursion)
+            current_response = try self.execute_request_no_redirect(&new_req);
         }
         
         if (redirect_count >= self.max_redirects) {
