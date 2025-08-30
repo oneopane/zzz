@@ -552,7 +552,7 @@ zig build run-example-connection-pool
 | Phase 1: URL Utilities & Query Parameters | ✅ Complete | 100% | Stubs created, architecture finalized |
 | Phase 2: Basic Connection | ✅ Complete | 100% | TCP connection implemented with tardy, tests passing |
 | Phase 3: Request Serialization | ✅ Complete | 100% | All methods implemented, 9 tests passing |
-| Phase 4: Response Parsing | ⏳ Pending | 0% | |
+| Phase 4: Response Parsing | ✅ Complete | 100% | All methods implemented, 9 tests passing |
 | Phase 5: Basic HTTP Client | ⏳ Pending | 0% | |
 | Phase 6: POST Support | ⏳ Pending | 0% | |
 | Phase 7: HTTPS Support | ⏳ Pending | 0% | |
@@ -561,11 +561,11 @@ zig build run-example-connection-pool
 
 ## Next Steps
 
-1. **Phase 4 Implementation**: Implement response parsing in `response.zig`
-2. **Create ClientResponse struct**: Status, headers, body parsing
-3. **Handle response variations**: Success, redirects, errors, chunked encoding
-4. **Test response parsing**: Unit tests for various response types
-5. **Update roadmap**: Document progress and move to Phase 5
+1. **Phase 5 Implementation**: Implement basic HTTP client in `client.zig`
+2. **Create HTTPClient struct**: Client lifecycle and request execution
+3. **Implement get() and head()**: Simple HTTP methods without body
+4. **Error handling**: Network failure handling and recovery
+5. **Integration testing**: Test real HTTP requests against httpbin.org
 
 ## Implementation Log
 
@@ -581,6 +581,19 @@ zig build run-example-connection-pool
 - ✅ Added comprehensive unit tests (9 tests, all passing)
 - **Key Design**: Direct std.Uri usage without wrapper types
 - **Memory Model**: Headers owned by request, body referenced (not owned)
+
+### Phase 4: Response Parsing (Completed 2025-08-29)
+- ✅ Implemented ClientResponse struct with allocator-based memory management
+- ✅ Created init/deinit/clear methods for lifecycle management
+- ✅ Implemented parse_headers() for status line and header parsing
+- ✅ Added parse_body() for simple body storage
+- ✅ Implemented parse_chunked_body() for chunked transfer encoding
+- ✅ Added helper methods: get_header(), get_content_length(), is_success(), is_redirect(), get_location()
+- ✅ Implemented json() and text() body handling methods
+- ✅ Added comprehensive unit tests (9 tests, all passing)
+- ✅ Integrated with existing test suite
+- **Key Design**: Owns body memory when parsed, headers stored with case-insensitive lookup
+- **Note**: HTTP/2 and HTTP/3 versions mapped to HTTP/1.1 for std.http.Version compatibility
 
 ### Phase 2: Basic Connection (Completed 2025-08-29)
 - ✅ Implemented Connection struct with state management
