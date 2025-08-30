@@ -9,43 +9,41 @@ const HTTPClient = @import("client.zig").HTTPClient;
 const ClientRequest = @import("request.zig").ClientRequest;
 const ClientResponse = @import("response.zig").ClientResponse;
 
-test "HTTPClient init and deinit" {
-    var rt = try tardy.Runtime.init(.{});
-    defer rt.deinit();
+test "HTTPClient with Tardy runtime" {
+    // This test demonstrates proper Tardy initialization
+    // For actual HTTP requests, we'd need to run this within Tardy.entry()
+    const Tardy = tardy.Tardy(.auto);
     
-    var client = try HTTPClient.init(testing.allocator, &rt);
-    defer client.deinit();
+    var t = try Tardy.init(testing.allocator, .{ .threading = .single });
+    defer t.deinit();
     
-    try expect(client.default_timeout_ms == 30000);
-    try expect(client.follow_redirects == true);
-    try expect(client.max_redirects == 10);
-}
-
-test "HTTPClient GET request (mock)" {
-    // This test requires a mock server or network access
-    // For now, we'll test the client initialization and structure
-    var rt = try tardy.Runtime.init(.{});
-    defer rt.deinit();
+    // The actual HTTP client usage would happen inside the entry function
+    // where a Runtime pointer is provided
+    const TestParams = struct {
+        allocator: std.mem.Allocator,
+        test_complete: *bool,
+    };
     
-    var client = try HTTPClient.init(testing.allocator, &rt);
-    defer client.deinit();
+    var test_complete = false;
     
-    // Verify client structure
-    try expect(client.runtime == &rt);
-    try expect(client.allocator.ptr == testing.allocator.ptr);
-}
-
-test "HTTPClient HEAD request (mock)" {
-    // This test requires a mock server or network access
-    // For now, we'll test the client initialization
-    var rt = try tardy.Runtime.init(.{});
-    defer rt.deinit();
+    try t.entry(
+        TestParams{ .allocator = testing.allocator, .test_complete = &test_complete },
+        struct {
+            fn entry(rt: *tardy.Runtime, params: TestParams) !void {
+                var client = try HTTPClient.init(params.allocator, rt);
+                defer client.deinit();
+                
+                // Verify client properties
+                if (client.default_timeout_ms != 30000) return error.TestFailure;
+                if (!client.follow_redirects) return error.TestFailure;
+                if (client.max_redirects != 10) return error.TestFailure;
+                
+                params.test_complete.* = true;
+            }
+        }.entry,
+    );
     
-    var client = try HTTPClient.init(testing.allocator, &rt);
-    defer client.deinit();
-    
-    // Verify client is properly initialized
-    try expect(client.follow_redirects == true);
+    try expect(test_complete);
 }
 
 // Integration tests (require network access)
