@@ -32,11 +32,11 @@ pub const HTTPClient = struct {
     }
 
     // High-level methods
-    pub fn get(self: *HTTPClient, url: []const u8) !ClientResponse {
+    pub fn get_into(self: *HTTPClient, url: []const u8, response: *ClientResponse) !void {
         var req = try ClientRequest.init(self.allocator, .GET, url);
         defer req.deinit();
         
-        return self.execute_request(&req);
+        try self.execute_request(&req, response);
     }
 
     pub fn post(self: *HTTPClient, url: []const u8, body: []const u8) !ClientResponse {
@@ -59,11 +59,11 @@ pub const HTTPClient = struct {
         @panic("Not implemented");
     }
 
-    pub fn head(self: *HTTPClient, url: []const u8) !ClientResponse {
+    pub fn head_into(self: *HTTPClient, url: []const u8, response: *ClientResponse) !void {
         var req = try ClientRequest.init(self.allocator, .HEAD, url);
         defer req.deinit();
         
-        return self.execute_request(&req);
+        try self.execute_request(&req, response);
     }
 
     pub fn patch(self: *HTTPClient, url: []const u8, body: []const u8) !ClientResponse {
@@ -81,7 +81,7 @@ pub const HTTPClient = struct {
     }
 
     // Internal methods
-    fn execute_request_no_redirect(self: *HTTPClient, req: *ClientRequest) !ClientResponse {
+    fn execute_request_no_redirect(self: *HTTPClient, req: *ClientRequest, response: *ClientResponse) !void {
         // Add default headers if they exist
         if (self.default_headers) |headers| {
             var it = headers.iterator();
@@ -135,9 +135,6 @@ pub const HTTPClient = struct {
         try response_buf.appendSlice(self.allocator, initial_buf[0..initial_bytes]);
         
         // Parse the response
-        var response = ClientResponse.init(self.allocator);
-        errdefer response.deinit();
-        
         const header_size = try response.parse_headers(response_buf.items);
         
         // For HEAD requests, there's no body
@@ -216,32 +213,24 @@ pub const HTTPClient = struct {
             }
         }
         
-        return response;
     }
     
-    fn execute_request(self: *HTTPClient, req: *ClientRequest) !ClientResponse {
-        const response = try self.execute_request_no_redirect(req);
+    fn execute_request(self: *HTTPClient, req: *ClientRequest, response: *ClientResponse) !void {
+        try self.execute_request_no_redirect(req, response);
         
         // Handle redirects if enabled
         if (self.follow_redirects and response.is_redirect()) {
-            var resp_copy = response;
-            return self.handle_redirects(&resp_copy, req);
+            try self.handle_redirects(response, req);
         }
-        
-        return response;
     }
 
-    fn handle_redirects(self: *HTTPClient, response: *ClientResponse, original_req: *ClientRequest) !ClientResponse {
-        var current_response = response.*;
+    fn handle_redirects(self: *HTTPClient, response: *ClientResponse, original_req: *ClientRequest) !void {
         var redirect_count: u8 = 0;
         
-        while (current_response.is_redirect() and redirect_count < self.max_redirects) {
-            defer {
-                if (redirect_count > 0) current_response.deinit();
-                redirect_count += 1;
-            }
+        while (response.is_redirect() and redirect_count < self.max_redirects) {
+            defer redirect_count += 1;
             
-            const location = current_response.get_location() 
+            const location = response.get_location() 
                 orelse return error.MissingLocationHeader;
             
             // 1) Build a Uri for the redirect target (absolute or relative)
@@ -272,7 +261,7 @@ pub const HTTPClient = struct {
             // - 301/302: if original was POST, many clients switch to GET (pragmatic)
             var follow_method = original_req.method;
             var drop_body = false;
-            switch (@intFromEnum(current_response.status)) {
+            switch (@intFromEnum(response.status)) {
                 303 => { follow_method = .GET; drop_body = true; },
                 301, 302 => if (original_req.method == .POST) { 
                     follow_method = .GET; 
@@ -335,14 +324,22 @@ pub const HTTPClient = struct {
             }
             
             // Finally execute (without redirect handling to avoid recursion)
-            current_response = try self.execute_request_no_redirect(&new_req);
+            // Need to create a temporary response for intermediate redirects
+            var temp_response = ClientResponse.init(self.allocator);
+            defer temp_response.deinit();
+            
+            try self.execute_request_no_redirect(&new_req, &temp_response);
+            
+            // Copy temp_response to response
+            response.deinit();
+            response.* = temp_response;
+            // Prevent double-free by resetting temp_response
+            temp_response = ClientResponse.init(self.allocator);
         }
         
         if (redirect_count >= self.max_redirects) {
             return error.TooManyRedirects;
         }
-        
-        return current_response;
     }
 };
 

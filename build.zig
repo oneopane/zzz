@@ -24,17 +24,22 @@ pub fn build(b: *std.Build) void {
 
     zzz.addImport("secsock", secsock);
 
-    add_example(b, "basic", false, target, optimize, zzz);
-    add_example(b, "cookies", false, target, optimize, zzz);
-    add_example(b, "form", false, target, optimize, zzz);
-    add_example(b, "fs", false, target, optimize, zzz);
-    add_example(b, "http_client", false, target, optimize, zzz);
-    add_example(b, "middleware", false, target, optimize, zzz);
-    add_example(b, "sse", false, target, optimize, zzz);
-    add_example(b, "tls", true, target, optimize, zzz);
+    // Server examples
+    add_example(b, "server/basic", "basic", false, target, optimize, zzz);
+    add_example(b, "server/cookies", "cookies", false, target, optimize, zzz);
+    add_example(b, "server/form", "form", false, target, optimize, zzz);
+    add_example(b, "server/fs", "fs", false, target, optimize, zzz);
+    add_example(b, "server/middleware", "middleware", false, target, optimize, zzz);
+    add_example(b, "server/sse", "sse", false, target, optimize, zzz);
+    add_example(b, "server/tls", "tls", true, target, optimize, zzz);
+    
+    // Client examples
+    add_example(b, "client/basic", "client_basic", false, target, optimize, zzz);
+    add_example(b, "client/http_client", "http_client", false, target, optimize, zzz);
+    add_example(b, "client/http_client_simple", "http_client_simple", false, target, optimize, zzz);
 
     if (target.result.os.tag != .windows) {
-        add_example(b, "unix", false, target, optimize, zzz);
+        add_example(b, "server/unix", "unix", false, target, optimize, zzz);
     }
 
     // Create test step
@@ -123,6 +128,7 @@ pub fn build(b: *std.Build) void {
 
 fn add_example(
     b: *std.Build,
+    path: []const u8,
     name: []const u8,
     link_libc: bool,
     target: std.Build.ResolvedTarget,
@@ -130,7 +136,7 @@ fn add_example(
     zzz_module: *std.Build.Module,
 ) void {
     const exe_mod = b.createModule(.{
-        .root_source_file = b.path(b.fmt("./examples/{s}/main.zig", .{name})),
+        .root_source_file = b.path(b.fmt("./examples/{s}/main.zig", .{path})),
         .target = target,
         .optimize = optimize,
     });

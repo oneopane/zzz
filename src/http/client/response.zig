@@ -26,6 +26,12 @@ pub const ClientResponse = struct {
     }
 
     pub fn deinit(self: *ClientResponse) void {
+        // Free all allocated header strings
+        var it = self.headers.iterator();
+        while (it.next()) |entry| {
+            self.allocator.free(entry.key_ptr.*);
+            self.allocator.free(entry.value_ptr.*);
+        }
         self.headers.deinit();
         self.cookies.deinit();
         if (self.owns_body) {
@@ -35,21 +41,6 @@ pub const ClientResponse = struct {
         }
     }
 
-    pub fn clear(self: *ClientResponse) void {
-        self.headers.clearRetainingCapacity();
-        // CookieMap doesn't have clearRetainingCapacity, need to clear and reinit
-        self.cookies.deinit();
-        self.cookies = CookieMap.init(self.allocator);
-        if (self.owns_body) {
-            if (self.body) |body| {
-                self.allocator.free(body);
-            }
-        }
-        self.body = null;
-        self.owns_body = false;
-        self.status = .OK;
-        self.version = .@"HTTP/1.1";
-    }
 
     // Parsing
     pub fn parse_headers(self: *ClientResponse, bytes: []const u8) !usize {
@@ -346,30 +337,6 @@ test "parse HTTP/2 response" {
     try std.testing.expectEqualStrings("application/json", resp.get_header("content-type").?);
 }
 
-test "clear response" {
-    const allocator = std.testing.allocator;
-    
-    var resp = ClientResponse.init(allocator);
-    defer resp.deinit();
-    
-    // Set some data
-    const response_text = 
-        "HTTP/1.1 200 OK\r\n" ++
-        "Content-Type: text/plain\r\n" ++
-        "\r\n" ++
-        "Hello";
-    
-    const header_size = try resp.parse_headers(response_text);
-    try resp.parse_body(response_text[header_size..]);
-    
-    // Clear it
-    resp.clear();
-    
-    // Verify cleared state
-    try std.testing.expect(resp.status == .OK);
-    try std.testing.expect(resp.body == null);
-    try std.testing.expect(resp.get_header("Content-Type") == null);
-}
 
 test "parse chunked body" {
     const allocator = std.testing.allocator;
