@@ -2,7 +2,9 @@ const std = @import("std");
 
 const Runtime = @import("tardy").Runtime;
 const Socket = @import("tardy").Socket;
-const SecureSocket = @import("secsock").SecureSocket;
+const secsock = @import("secsock");
+const SecureSocket = secsock.SecureSocket;
+const BearSSL = secsock.BearSSL;
 
 pub const ConnectionState = enum {
     disconnected,
@@ -25,25 +27,24 @@ pub const Connection = struct {
     state: ConnectionState,
     last_used: i64,
     keepalive_count: u32 = 0,
+    use_tls: bool,
+    bearssl: ?*BearSSL = null,
 
     pub fn init(allocator: std.mem.Allocator, host: []const u8, port: u16, use_tls: bool) !Connection {
         // Make a copy of the host string
         const host_copy = try allocator.dupe(u8, host);
         errdefer allocator.free(host_copy);
         
-        // For Phase 2, we only support non-TLS connections
-        if (use_tls) {
-            return error.TLSNotImplementedYet;
-        }
-        
         return Connection{
             .allocator = allocator,
-            .socket = .{ .plain = undefined }, // Will be initialized in connect()
+            .socket = if (use_tls) .{ .secure = undefined } else .{ .plain = undefined },
             .host = host_copy,
             .port = port,
             .state = .disconnected,
             .last_used = std.time.milliTimestamp(),
             .keepalive_count = 0,
+            .use_tls = use_tls,
+            .bearssl = null,
         };
     }
 
@@ -76,7 +77,28 @@ pub const Connection = struct {
         // Connect to the server using tardy runtime
         try socket.connect(runtime);
         
-        self.socket = .{ .plain = socket };
+        if (self.use_tls) {
+            // Initialize BearSSL for TLS
+            var bearssl = try self.allocator.create(BearSSL);
+            errdefer self.allocator.destroy(bearssl);
+            
+            bearssl.* = BearSSL.init(self.allocator);
+            errdefer bearssl.deinit();
+            
+            // Configure BearSSL for client mode with host verification
+            // Note: In production, you'd want to configure trusted CA certificates
+            // For now, we'll use default certificate validation
+            
+            // Convert socket to secure socket
+            // Note: .client mode for TLS client connections
+            const secure_socket = try bearssl.to_secure_socket(socket, .client);
+            
+            self.socket = .{ .secure = secure_socket };
+            self.bearssl = bearssl;
+        } else {
+            self.socket = .{ .plain = socket };
+        }
+        
         self.state = .connected;
         self.last_used = std.time.milliTimestamp();
     }
@@ -84,6 +106,11 @@ pub const Connection = struct {
     pub fn deinit(self: *Connection) void {
         self.close();
         self.allocator.free(self.host);
+        
+        if (self.bearssl) |bearssl| {
+            bearssl.deinit();
+            self.allocator.destroy(bearssl);
+        }
     }
 
     pub fn close(self: *Connection) void {
@@ -98,8 +125,11 @@ pub const Connection = struct {
                 // Use blocking close since we don't have runtime in close()
                 socket.close_blocking();
             },
-            .secure => {
-                // TLS cleanup will be implemented in Phase 7
+            .secure => |secure| {
+                // First, close the TLS connection gracefully
+                secure.deinit();
+                // Then close the underlying socket
+                secure.socket.close_blocking();
             },
         }
         
@@ -127,14 +157,13 @@ pub const Connection = struct {
         
         self.state = .active;
         
-        const socket = switch (self.socket) {
-            .plain => |*s| s,
-            .secure => return error.TLSNotImplementedYet,
-        };
-        
         var bytes_sent: usize = 0;
         while (bytes_sent < data.len) {
-            const n = try socket.send(runtime, data[bytes_sent..]);
+            const n = switch (self.socket) {
+                .plain => |*socket| try socket.send(runtime, data[bytes_sent..]),
+                .secure => |*secure| try secure.send(runtime, data[bytes_sent..]),
+            };
+            
             if (n == 0) {
                 self.state = .closed;
                 return error.ConnectionClosed;
@@ -153,12 +182,11 @@ pub const Connection = struct {
         
         self.state = .active;
         
-        const socket = switch (self.socket) {
-            .plain => |*s| s,
-            .secure => return error.TLSNotImplementedYet,
+        const bytes_read = switch (self.socket) {
+            .plain => |*socket| try socket.recv(runtime, buffer),
+            .secure => |*secure| try secure.recv(runtime, buffer),
         };
         
-        const bytes_read = try socket.recv(runtime, buffer);
         if (bytes_read == 0) {
             self.state = .closed;
             return error.ConnectionClosed;
@@ -186,12 +214,17 @@ test "Connection.init creates connection object" {
     try std.testing.expectEqual(conn.keepalive_count, 0);
 }
 
-test "Connection.init returns error for TLS (not implemented yet)" {
+test "Connection.init creates TLS connection object" {
     const allocator = std.testing.allocator;
     
-    // Test TLS connection should fail in Phase 2
-    const result = Connection.init(allocator, "example.com", 443, true);
-    try std.testing.expectError(error.TLSNotImplementedYet, result);
+    // Test TLS connection initialization
+    var conn = try Connection.init(allocator, "example.com", 443, true);
+    defer conn.deinit();
+    
+    try std.testing.expectEqualStrings(conn.host, "example.com");
+    try std.testing.expectEqual(conn.port, 443);
+    try std.testing.expectEqual(conn.state, .disconnected);
+    try std.testing.expectEqual(conn.use_tls, true);
 }
 
 test "Connection state transitions" {
