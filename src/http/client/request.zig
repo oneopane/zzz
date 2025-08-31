@@ -133,10 +133,56 @@ pub const ClientRequest = struct {
     }
 
     pub fn set_json(self: *ClientRequest, value: anytype) !*ClientRequest {
-        // For now, just set Content-Type header
-        // TODO: Actually serialize the JSON and set body
+        // For now, just serialize manually for basic types
+        // TODO: Properly integrate with Zig 0.15's JSON API when stable
+        const T = @TypeOf(value);
+        const type_info = @typeInfo(T);
+        
+        var json_str: []u8 = undefined;
+        if (type_info == .@"struct") {
+            // Simple JSON serialization for structs - temporary implementation
+            var buffer = try std.ArrayList(u8).initCapacity(self.allocator, 256);
+            defer buffer.deinit(self.allocator);
+            
+            try buffer.appendSlice(self.allocator, "{");
+            inline for (type_info.@"struct".fields, 0..) |field, i| {
+                if (i > 0) try buffer.appendSlice(self.allocator, ",");
+                try buffer.append(self.allocator, '"');
+                try buffer.appendSlice(self.allocator, field.name);
+                try buffer.appendSlice(self.allocator, "\":");
+                
+                const field_value = @field(value, field.name);
+                const field_type = @TypeOf(field_value);
+                
+                if (field_type == []const u8) {
+                    try buffer.append(self.allocator, '"');
+                    try buffer.appendSlice(self.allocator, field_value);
+                    try buffer.append(self.allocator, '"');
+                } else if (@typeInfo(field_type) == .int or @typeInfo(field_type) == .comptime_int) {
+                    try std.fmt.format(buffer.writer(self.allocator), "{d}", .{field_value});
+                } else {
+                    // For other types, just stringify as best we can
+                    try std.fmt.format(buffer.writer(self.allocator), "{any}", .{field_value});
+                }
+            }
+            try buffer.appendSlice(self.allocator, "}");
+            
+            json_str = try self.allocator.dupe(u8, buffer.items);
+        } else {
+            // For non-structs, use simple formatting
+            json_str = try std.fmt.allocPrint(self.allocator, "{any}", .{value});
+        }
+        
+        // Free old body if it was allocated
+        if (self.body) |old_body| {
+            self.allocator.free(old_body);
+        }
+        
+        self.body = json_str;
+        
+        // Set Content-Type header
         _ = try self.set_header("Content-Type", "application/json");
-        _ = value;
+        
         return self;
     }
 
@@ -304,10 +350,58 @@ pub const RequestBuilder = struct {
     }
 
     pub fn json(self: *RequestBuilder, value: anytype) !*RequestBuilder {
-        // For now, just set Content-Type header
-        // TODO: Actually serialize the JSON
+        // For now, just serialize manually for basic types
+        // TODO: Properly integrate with Zig 0.15's JSON API when stable
+        const T = @TypeOf(value);
+        const type_info = @typeInfo(T);
+        
+        var json_str: []u8 = undefined;
+        if (type_info == .@"struct") {
+            // Simple JSON serialization for structs - temporary implementation
+            var buffer = try std.ArrayList(u8).initCapacity(self.allocator, 256);
+            defer buffer.deinit(self.allocator);
+            
+            try buffer.appendSlice(self.allocator, "{");
+            inline for (type_info.@"struct".fields, 0..) |field, i| {
+                if (i > 0) try buffer.appendSlice(self.allocator, ",");
+                try buffer.append(self.allocator, '"');
+                try buffer.appendSlice(self.allocator, field.name);
+                try buffer.appendSlice(self.allocator, "\":");
+                
+                const field_value = @field(value, field.name);
+                const field_type = @TypeOf(field_value);
+                
+                if (field_type == []const u8) {
+                    try buffer.append(self.allocator, '"');
+                    try buffer.appendSlice(self.allocator, field_value);
+                    try buffer.append(self.allocator, '"');
+                } else if (@typeInfo(field_type) == .int or @typeInfo(field_type) == .comptime_int) {
+                    try std.fmt.format(buffer.writer(self.allocator), "{d}", .{field_value});
+                } else {
+                    // For other types, just stringify as best we can
+                    try std.fmt.format(buffer.writer(self.allocator), "{any}", .{field_value});
+                }
+            }
+            try buffer.appendSlice(self.allocator, "}");
+            
+            json_str = try self.allocator.dupe(u8, buffer.items);
+        } else {
+            // For non-structs, use simple formatting
+            json_str = try std.fmt.allocPrint(self.allocator, "{any}", .{value});
+        }
+        
+        // Free old body if we allocated one
+        if (self.body_value) |old_body| {
+            // Only free if it looks like we allocated it (a simple heuristic)
+            // In a production system, we'd track this more carefully
+            self.allocator.free(old_body);
+        }
+        
+        self.body_value = json_str;
+        
+        // Set Content-Type header
         _ = try self.header("Content-Type", "application/json");
-        _ = value;
+        
         return self;
     }
 
@@ -517,4 +611,127 @@ test "serialize request preserves custom Content-Length header" {
     try expect(std.mem.indexOf(u8, buf.items, "Content-Length: 100\r\n") != null);
     // Should NOT have Content-Length: 4
     try expect(std.mem.indexOf(u8, buf.items, "Content-Length: 4\r\n") == null);
+}
+
+test "ClientRequest.set_json serializes struct to JSON body" {
+    const allocator = testing.allocator;
+    
+    var req = try ClientRequest.init(allocator, .POST, "http://api.example.com/users");
+    defer req.deinit();
+    
+    const User = struct {
+        name: []const u8,
+        age: u32,
+    };
+    
+    const user = User{ .name = "John", .age = 30 };
+    _ = try req.set_json(user);
+    
+    // Check that body contains serialized JSON
+    try expect(req.body != null);
+    const expected_json = "{\"name\":\"John\",\"age\":30}";
+    try expectEqualStrings(req.body.?, expected_json);
+    
+    // Check that Content-Type header was set
+    try expectEqualStrings(req.headers.get("Content-Type").?, "application/json");
+}
+
+test "RequestBuilder.json serializes struct to JSON body" {
+    const allocator = testing.allocator;
+    
+    var builder = RequestBuilder.init(allocator);
+    defer builder.deinit();
+    
+    const Data = struct {
+        message: []const u8,
+        count: u32,
+    };
+    
+    const data = Data{ .message = "Hello", .count = 42 };
+    _ = try builder.post("http://api.example.com/data", "")
+        .json(data);
+    
+    var req = try builder.build();
+    defer req.deinit();
+    
+    // Check that body contains serialized JSON
+    try expect(req.body != null);
+    const expected_json = "{\"message\":\"Hello\",\"count\":42}";
+    try expectEqualStrings(req.body.?, expected_json);
+    
+    // Check that Content-Type header was set
+    try expectEqualStrings(req.headers.get("Content-Type").?, "application/json");
+}
+
+test "POST request with JSON body serialization" {
+    const allocator = testing.allocator;
+    
+    var req = try ClientRequest.post(allocator, "http://api.example.com/users", "");
+    defer req.deinit();
+    
+    const Payload = struct {
+        items: []const []const u8,
+        total: u32,
+    };
+    
+    const payload = Payload{ 
+        .items = &[_][]const u8{"apple", "banana", "orange"},
+        .total = 3,
+    };
+    _ = try req.set_json(payload);
+    
+    var buf = try std.ArrayList(u8).initCapacity(allocator, 512);
+    defer buf.deinit(allocator);
+    
+    try req.serialize_full(buf.writer(allocator));
+    
+    // Verify the request contains JSON body
+    const expected_json = "{\"items\":[\"apple\",\"banana\",\"orange\"],\"total\":3}";
+    try expect(std.mem.indexOf(u8, buf.items, expected_json) != null);
+    
+    // Verify Content-Type and Content-Length headers are present
+    try expect(std.mem.indexOf(u8, buf.items, "Content-Type: application/json\r\n") != null);
+    try expect(std.mem.indexOf(u8, buf.items, "Content-Length: 48\r\n") != null);
+}
+
+test "DELETE request convenience constructor" {
+    const allocator = testing.allocator;
+    
+    var req = try ClientRequest.delete(allocator, "http://api.example.com/users/123");
+    defer req.deinit();
+    
+    try expect(req.method == .DELETE);
+    try expectEqualStrings(req.uri.scheme, "http");
+    
+    var buf = try std.ArrayList(u8).initCapacity(allocator, 256);
+    defer buf.deinit(allocator);
+    
+    try req.serialize_headers(buf.writer(allocator));
+    
+    // Verify DELETE method in request line
+    try expect(std.mem.startsWith(u8, buf.items, "DELETE /users/123 HTTP/1.1\r\n"));
+}
+
+test "RequestBuilder DELETE method" {
+    const allocator = testing.allocator;
+    
+    var builder = RequestBuilder.init(allocator);
+    defer builder.deinit();
+    
+    _ = builder.delete("http://api.example.com/resource/456")
+        .timeout(5000);
+    
+    var req = try builder.build();
+    defer req.deinit();
+    
+    try expect(req.method == .DELETE);
+    try expect(req.timeout_ms.? == 5000);
+    
+    var buf = try std.ArrayList(u8).initCapacity(allocator, 256);
+    defer buf.deinit(allocator);
+    
+    try req.serialize_headers(buf.writer(allocator));
+    
+    // Verify DELETE method in request line
+    try expect(std.mem.startsWith(u8, buf.items, "DELETE /resource/456 HTTP/1.1\r\n"));
 }

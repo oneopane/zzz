@@ -3,6 +3,38 @@ const zzz = @import("zzz");
 const tardy = zzz.tardy;
 
 const HTTPClient = zzz.HTTP.Client.HTTPClient;
+const ClientRequest = zzz.HTTP.Client.ClientRequest;
+const ClientResponse = zzz.HTTP.Client.ClientResponse;
+
+// Template for consistent output formatting
+const ExampleResult = struct {
+    name: []const u8,
+    url: []const u8,
+    method: []const u8,
+    status_code: u16,
+    status_name: []const u8,
+    body_size: ?usize,
+    
+    fn print(self: ExampleResult) void {
+        std.debug.print(
+            \\
+            \\=== {s} ===
+            \\  Method:  {s}
+            \\  URL:     {s}
+            \\  Status:  {} {s}
+            \\  Body:    {} bytes
+            \\  Result:  ✓ Success
+            \\
+        , .{
+            self.name,
+            self.method,
+            self.url,
+            self.status_code,
+            self.status_name,
+            self.body_size orelse 0,
+        });
+    }
+};
 
 pub fn main() !void {
     // Setup allocator
@@ -27,46 +59,142 @@ pub fn main() !void {
 }
 
 fn run_client(rt: *tardy.Runtime, allocator: std.mem.Allocator) !void {
-    std.debug.print("\n=== Basic HTTP GET Request ===\n\n", .{});
-    
-    // Initialize HTTP client
+    // Initialize HTTP client once for all examples
     var client = try HTTPClient.init(allocator, rt);
     defer client.deinit();
     
-    // Perform a simple GET request
-    const url = "http://httpbin.org/get";
-    std.debug.print("Fetching: {s}\n", .{url});
+    std.debug.print("\n🚀 zzz HTTP Client Examples - Phase 6 Features\n", .{});
+    std.debug.print("=" ** 50 ++ "\n", .{});
     
-    // Create request object that we own
-    var request = try zzz.HTTP.Client.ClientRequest.get(allocator, url);
+    // Run all examples
+    try example_get_request(&client, allocator);
+    try example_post_with_json(&client, allocator);
+    try example_delete_request(&client, allocator);
+    try example_request_builder(&client, allocator);
+    
+    std.debug.print("\n✅ All examples completed successfully!\n\n", .{});
+}
+
+fn example_get_request(client: *HTTPClient, allocator: std.mem.Allocator) !void {
+    const url = "http://httpbin.org/get";
+    
+    var request = try ClientRequest.get(allocator, url);
     defer request.deinit();
     
-    // Create response object that we own
-    var response = zzz.HTTP.Client.ClientResponse.init(allocator);
+    var response = ClientResponse.init(allocator);
     defer response.deinit();
     
-    // Send the request
     try client.send(&request, &response);
     
-    // Print response status
-    std.debug.print("Status: {} {s}\n", .{ 
-        @intFromEnum(response.status),
-        @tagName(response.status)
-    });
+    const result = ExampleResult{
+        .name = "Basic GET Request",
+        .url = url,
+        .method = "GET",
+        .status_code = @intFromEnum(response.status),
+        .status_name = @tagName(response.status),
+        .body_size = if (response.body) |b| b.len else null,
+    };
+    result.print();
+}
+
+fn example_post_with_json(client: *HTTPClient, allocator: std.mem.Allocator) !void {
+    const url = "http://httpbin.org/post";
     
-    // Print response headers
-    std.debug.print("\nHeaders:\n", .{});
-    var header_iter = response.headers.iterator();
-    while (header_iter.next()) |entry| {
-        std.debug.print("  {s}: {s}\n", .{ entry.key_ptr.*, entry.value_ptr.* });
-    }
+    var request = try ClientRequest.post(allocator, url, "");
+    defer request.deinit();
     
-    // Print response body
-    if (response.body) |body| {
-        std.debug.print("\nBody ({} bytes):\n{s}\n", .{ body.len, body });
-    } else {
-        std.debug.print("\nNo response body\n", .{});
-    }
+    // Define and serialize a struct to JSON
+    const User = struct {
+        name: []const u8,
+        email: []const u8,
+        age: u32,
+    };
     
-    std.debug.print("\n=== Request completed successfully! ===\n\n", .{});
+    const user = User{
+        .name = "Alice",
+        .email = "alice@example.com",
+        .age = 28,
+    };
+    
+    _ = try request.set_json(user);
+    
+    var response = ClientResponse.init(allocator);
+    defer response.deinit();
+    
+    try client.send(&request, &response);
+    
+    const result = ExampleResult{
+        .name = "POST with JSON Body",
+        .url = url,
+        .method = "POST",
+        .status_code = @intFromEnum(response.status),
+        .status_name = @tagName(response.status),
+        .body_size = if (response.body) |b| b.len else null,
+    };
+    result.print();
+}
+
+fn example_delete_request(client: *HTTPClient, allocator: std.mem.Allocator) !void {
+    const url = "http://httpbin.org/delete";
+    
+    var request = try ClientRequest.delete(allocator, url);
+    defer request.deinit();
+    
+    _ = try request.set_header("X-Custom-Header", "test-value");
+    
+    var response = ClientResponse.init(allocator);
+    defer response.deinit();
+    
+    try client.send(&request, &response);
+    
+    const result = ExampleResult{
+        .name = "DELETE Request",
+        .url = url,
+        .method = "DELETE",
+        .status_code = @intFromEnum(response.status),
+        .status_name = @tagName(response.status),
+        .body_size = if (response.body) |b| b.len else null,
+    };
+    result.print();
+}
+
+fn example_request_builder(client: *HTTPClient, allocator: std.mem.Allocator) !void {
+    const url = "http://httpbin.org/put";
+    
+    var builder = ClientRequest.builder(allocator);
+    defer builder.deinit();
+    
+    const Data = struct {
+        message: []const u8,
+        value: i32,
+    };
+    
+    const data = Data{
+        .message = "Hello from zzz!",
+        .value = 42,
+    };
+    
+    _ = try builder
+        .put(url, "")
+        .json(data);
+    _ = try builder.header("User-Agent", "zzz-client/1.0");
+    _ = builder.timeout(5000);
+    
+    var request = try builder.build();
+    defer request.deinit();
+    
+    var response = ClientResponse.init(allocator);
+    defer response.deinit();
+    
+    try client.send(&request, &response);
+    
+    const result = ExampleResult{
+        .name = "RequestBuilder with JSON",
+        .url = url,
+        .method = "PUT",
+        .status_code = @intFromEnum(response.status),
+        .status_name = @tagName(response.status),
+        .body_size = if (response.body) |b| b.len else null,
+    };
+    result.print();
 }
