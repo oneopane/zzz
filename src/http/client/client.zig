@@ -2,6 +2,9 @@ const std = @import("std");
 
 const Runtime = @import("tardy").Runtime;
 const Connection = @import("connection.zig").Connection;
+const connection_pool = @import("connection_pool.zig");
+const ConnectionPool = connection_pool.ConnectionPool;
+const PoolStats = connection_pool.PoolStats;
 const ClientRequest = @import("request.zig").ClientRequest;
 const ClientResponse = @import("response.zig").ClientResponse;
 const AnyCaseStringMap = @import("../../core/any_case_string_map.zig").AnyCaseStringMap;
@@ -9,19 +12,23 @@ const AnyCaseStringMap = @import("../../core/any_case_string_map.zig").AnyCaseSt
 pub const HTTPClient = struct {
     runtime: *Runtime,
     allocator: std.mem.Allocator,
+    connection_pool: ConnectionPool,
     default_timeout_ms: u32 = 30000,
     default_headers: ?AnyCaseStringMap = null,
     follow_redirects: bool = true,
     max_redirects: u8 = 10,
+    use_connection_pool: bool = true,
 
     pub fn init(allocator: std.mem.Allocator, runtime: *Runtime) !HTTPClient {
         return HTTPClient{
             .allocator = allocator,
             .runtime = runtime,
+            .connection_pool = ConnectionPool.init(allocator, runtime),
             .default_timeout_ms = 30000,
             .default_headers = null,
             .follow_redirects = true,
             .max_redirects = 10,
+            .use_connection_pool = true,
         };
     }
 
@@ -29,11 +36,29 @@ pub const HTTPClient = struct {
         if (self.default_headers) |*headers| {
             headers.deinit();
         }
+        self.connection_pool.deinit();
     }
 
     // Main send method - this is the only way to make requests
     pub fn send(self: *HTTPClient, request: *ClientRequest, response: *ClientResponse) !void {
         try self.send_request(request, response);
+    }
+    
+    // Connection pool configuration
+    pub fn set_max_connections_per_host(self: *HTTPClient, max: u32) void {
+        self.connection_pool.max_connections_per_host = max;
+    }
+    
+    pub fn set_max_idle_time(self: *HTTPClient, ms: i64) void {
+        self.connection_pool.max_idle_time_ms = ms;
+    }
+    
+    pub fn cleanup_idle_connections(self: *HTTPClient) void {
+        self.connection_pool.cleanup_idle();
+    }
+    
+    pub fn get_pool_stats(self: *const HTTPClient) PoolStats {
+        return self.connection_pool.get_stats();
     }
 
     // Internal methods
@@ -61,12 +86,38 @@ pub const HTTPClient = struct {
         const port = req.uri.port orelse default_port;
         const use_tls = std.ascii.eqlIgnoreCase(req.uri.scheme, "https");
         
-        // Create a connection (no pooling in Phase 5)
-        var conn = try Connection.init(self.allocator, host_str, port, use_tls);
-        defer conn.deinit();
+        // Get connection from pool or create a new one
+        var conn: *Connection = undefined;
+        var pooled_connection = false;
         
-        // Connect to the server
-        try conn.connect(self.runtime);
+        if (self.use_connection_pool) {
+            conn = try self.connection_pool.get_connection(host_str, port, use_tls);
+            pooled_connection = true;
+        } else {
+            // Fallback to direct connection (for testing or when pool disabled)
+            const direct_conn = try self.allocator.create(Connection);
+            direct_conn.* = try Connection.init(self.allocator, host_str, port, use_tls);
+            try direct_conn.connect(self.runtime);
+            conn = direct_conn;
+        }
+        
+        // Ensure connection is returned to pool or cleaned up
+        defer {
+            if (pooled_connection) {
+                // Check if response indicates connection should close
+                const should_close = response.get_header("Connection") != null and 
+                    std.ascii.eqlIgnoreCase(response.get_header("Connection").?, "close");
+                
+                if (should_close or !conn.is_alive()) {
+                    self.connection_pool.remove_connection(conn);
+                } else {
+                    self.connection_pool.return_connection(conn);
+                }
+            } else {
+                conn.deinit();
+                self.allocator.destroy(conn);
+            }
+        }
         
         // Serialize and send the request
         var request_buf = try std.ArrayList(u8).initCapacity(self.allocator, 4096);

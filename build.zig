@@ -36,6 +36,7 @@ pub fn build(b: *std.Build) void {
     // Client examples
     add_example(b, "client/basic", "client_basic", false, target, optimize, zzz);
     add_example(b, "client/https", "client_https", true, target, optimize, zzz);
+    add_example(b, "client/pool", "client_pool", false, target, optimize, zzz);
     add_example(b, "client/http_client", "http_client", false, target, optimize, zzz);
     add_example(b, "client/http_client_simple", "http_client_simple", false, target, optimize, zzz);
 

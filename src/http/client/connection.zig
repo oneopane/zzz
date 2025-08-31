@@ -197,6 +197,13 @@ pub const Connection = struct {
         
         return bytes_read;
     }
+    
+    pub fn reset_for_reuse(self: *Connection) void {
+        // Reset connection state for reuse in pool
+        self.state = .idle;
+        self.last_used = std.time.milliTimestamp();
+        // Note: keepalive_count is managed by the pool
+    }
 };
 
 // Tests for Phase 2: Basic Connection

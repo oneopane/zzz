@@ -17,6 +17,7 @@ test "HTTP Client modules" {
     
     // For now, just verify the modules compile
     _ = @import("./http/client/connection.zig");
+    _ = @import("./http/client/connection_pool.zig");
     _ = @import("./http/client/request.zig");
     _ = @import("./http/client/response.zig");
     _ = @import("./http/client/client.zig");
