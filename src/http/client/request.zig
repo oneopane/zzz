@@ -17,6 +17,42 @@ pub const ClientRequest = struct {
     timeout_ms: ?u32 = null,
     follow_redirects: ?bool = null,
 
+    // Convenience initializers for common cases
+    pub fn get(allocator: std.mem.Allocator, url_string: []const u8) !ClientRequest {
+        return ClientRequest.init(allocator, .GET, url_string);
+    }
+    
+    pub fn post(allocator: std.mem.Allocator, url_string: []const u8, body: []const u8) !ClientRequest {
+        var req = try ClientRequest.init(allocator, .POST, url_string);
+        _ = req.set_body(body);
+        return req;
+    }
+    
+    pub fn put(allocator: std.mem.Allocator, url_string: []const u8, body: []const u8) !ClientRequest {
+        var req = try ClientRequest.init(allocator, .PUT, url_string);
+        _ = req.set_body(body);
+        return req;
+    }
+    
+    pub fn delete(allocator: std.mem.Allocator, url_string: []const u8) !ClientRequest {
+        return ClientRequest.init(allocator, .DELETE, url_string);
+    }
+    
+    pub fn head(allocator: std.mem.Allocator, url_string: []const u8) !ClientRequest {
+        return ClientRequest.init(allocator, .HEAD, url_string);
+    }
+    
+    pub fn patch(allocator: std.mem.Allocator, url_string: []const u8, body: []const u8) !ClientRequest {
+        var req = try ClientRequest.init(allocator, .PATCH, url_string);
+        _ = req.set_body(body);
+        return req;
+    }
+    
+    // Builder pattern entry point
+    pub fn builder(allocator: std.mem.Allocator) RequestBuilder {
+        return RequestBuilder.init(allocator);
+    }
+    
     pub fn init(allocator: std.mem.Allocator, method: Method, url_string: []const u8) !ClientRequest {
         const parsed_uri = try Uri.parse(url_string);
         
@@ -97,21 +133,21 @@ pub const ClientRequest = struct {
     }
 
     pub fn set_json(self: *ClientRequest, value: anytype) !*ClientRequest {
-        _ = self;
+        // For now, just set Content-Type header
+        // TODO: Actually serialize the JSON and set body
+        _ = try self.set_header("Content-Type", "application/json");
         _ = value;
-        @panic("Not implemented");
+        return self;
     }
 
     pub fn set_timeout(self: *ClientRequest, timeout_ms: u32) *ClientRequest {
-        _ = self;
-        _ = timeout_ms;
-        @panic("Not implemented");
+        self.timeout_ms = timeout_ms;
+        return self;
     }
 
     pub fn add_cookie(self: *ClientRequest, cookie: Cookie) !*ClientRequest {
-        _ = self;
-        _ = cookie;
-        @panic("Not implemented");
+        try self.cookies.put(cookie.name, cookie);
+        return self;
     }
 
     // Serialization
@@ -164,47 +200,155 @@ pub const ClientRequest = struct {
 };
 
 pub const RequestBuilder = struct {
-    request: ClientRequest,
+    allocator: std.mem.Allocator,
+    method_value: ?Method = null,
+    url_string: ?[]const u8 = null,
+    headers: std.StringHashMap([]const u8),
+    body_value: ?[]const u8 = null,
+    timeout_ms: ?u32 = null,
+    follow_redirects_value: ?bool = null,
 
     pub fn init(allocator: std.mem.Allocator) RequestBuilder {
-        _ = allocator;
-        @panic("Not implemented");
+        return RequestBuilder{
+            .allocator = allocator,
+            .method_value = null,
+            .url_string = null,
+            .headers = std.StringHashMap([]const u8).init(allocator),
+            .body_value = null,
+            .timeout_ms = null,
+            .follow_redirects_value = null,
+        };
     }
 
+    pub fn deinit(self: *RequestBuilder) void {
+        // Free any allocated header values if we own them
+        var iter = self.headers.iterator();
+        while (iter.next()) |entry| {
+            self.allocator.free(entry.value_ptr.*);
+        }
+        self.headers.deinit();
+    }
+
+    // Method setters
+    pub fn get(self: *RequestBuilder, url_string: []const u8) *RequestBuilder {
+        self.method_value = .GET;
+        self.url_string = url_string;
+        return self;
+    }
+
+    pub fn post(self: *RequestBuilder, url_string: []const u8, b: []const u8) *RequestBuilder {
+        self.method_value = .POST;
+        self.url_string = url_string;
+        self.body_value = b;
+        return self;
+    }
+
+    pub fn put(self: *RequestBuilder, url_string: []const u8, b: []const u8) *RequestBuilder {
+        self.method_value = .PUT;
+        self.url_string = url_string;
+        self.body_value = b;
+        return self;
+    }
+
+    pub fn patch(self: *RequestBuilder, url_string: []const u8, b: []const u8) *RequestBuilder {
+        self.method_value = .PATCH;
+        self.url_string = url_string;
+        self.body_value = b;
+        return self;
+    }
+
+    pub fn delete(self: *RequestBuilder, url_string: []const u8) *RequestBuilder {
+        self.method_value = .DELETE;
+        self.url_string = url_string;
+        return self;
+    }
+
+    pub fn head(self: *RequestBuilder, url_string: []const u8) *RequestBuilder {
+        self.method_value = .HEAD;
+        self.url_string = url_string;
+        return self;
+    }
+
+    // Generic method setter
     pub fn method(self: *RequestBuilder, m: Method) *RequestBuilder {
-        _ = self;
-        _ = m;
-        @panic("Not implemented");
+        self.method_value = m;
+        return self;
     }
 
-    pub fn url(self: *RequestBuilder, url_string: []const u8) !*RequestBuilder {
-        _ = self;
-        _ = url_string;
-        @panic("Not implemented");
+    pub fn url(self: *RequestBuilder, url_string: []const u8) *RequestBuilder {
+        self.url_string = url_string;
+        return self;
     }
 
     pub fn header(self: *RequestBuilder, key: []const u8, value: []const u8) !*RequestBuilder {
-        _ = self;
-        _ = key;
-        _ = value;
-        @panic("Not implemented");
+        // Allocate and store the value
+        const duped_value = try self.allocator.dupe(u8, value);
+        
+        // If key exists, free old value
+        if (self.headers.get(key)) |old_value| {
+            self.allocator.free(old_value);
+        }
+        
+        try self.headers.put(key, duped_value);
+        return self;
+    }
+
+    pub fn bearer_token(self: *RequestBuilder, token: []const u8) !*RequestBuilder {
+        const auth_value = try std.fmt.allocPrint(self.allocator, "Bearer {s}", .{token});
+        return self.header("Authorization", auth_value);
     }
 
     pub fn body(self: *RequestBuilder, b: []const u8) *RequestBuilder {
-        _ = self;
-        _ = b;
-        @panic("Not implemented");
+        self.body_value = b;
+        return self;
     }
 
     pub fn json(self: *RequestBuilder, value: anytype) !*RequestBuilder {
-        _ = self;
+        // For now, just set Content-Type header
+        // TODO: Actually serialize the JSON
+        _ = try self.header("Content-Type", "application/json");
         _ = value;
-        @panic("Not implemented");
+        return self;
     }
 
-    pub fn build(self: *RequestBuilder) ClientRequest {
-        _ = self;
-        @panic("Not implemented");
+    pub fn timeout(self: *RequestBuilder, timeout_ms: u32) *RequestBuilder {
+        self.timeout_ms = timeout_ms;
+        return self;
+    }
+
+    pub fn follow_redirects(self: *RequestBuilder, follow: bool) *RequestBuilder {
+        self.follow_redirects_value = follow;
+        return self;
+    }
+
+    pub fn build(self: *RequestBuilder) !ClientRequest {
+        // Validate required fields
+        const m = self.method_value orelse return error.MethodRequired;
+        const url_str = self.url_string orelse return error.UrlRequired;
+        
+        // Create the request
+        var req = try ClientRequest.init(self.allocator, m, url_str);
+        
+        // Transfer headers
+        var iter = self.headers.iterator();
+        while (iter.next()) |entry| {
+            _ = try req.set_header(entry.key_ptr.*, entry.value_ptr.*);
+        }
+        
+        // Set optional fields
+        if (self.body_value) |b| {
+            _ = req.set_body(b);
+        }
+        
+        if (self.timeout_ms) |t| {
+            req.timeout_ms = t;
+        }
+        
+        if (self.follow_redirects_value) |f| {
+            req.follow_redirects = f;
+        }
+        
+        return req;
     }
 };
 

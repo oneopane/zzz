@@ -31,57 +31,13 @@ pub const HTTPClient = struct {
         }
     }
 
-    // High-level methods
-    pub fn get_into(self: *HTTPClient, url: []const u8, response: *ClientResponse) !void {
-        var req = try ClientRequest.init(self.allocator, .GET, url);
-        defer req.deinit();
-        
-        try self.execute_request(&req, response);
-    }
-
-    pub fn post(self: *HTTPClient, url: []const u8, body: []const u8) !ClientResponse {
-        _ = self;
-        _ = url;
-        _ = body;
-        @panic("Not implemented");
-    }
-
-    pub fn put(self: *HTTPClient, url: []const u8, body: []const u8) !ClientResponse {
-        _ = self;
-        _ = url;
-        _ = body;
-        @panic("Not implemented");
-    }
-
-    pub fn delete(self: *HTTPClient, url: []const u8) !ClientResponse {
-        _ = self;
-        _ = url;
-        @panic("Not implemented");
-    }
-
-    pub fn head_into(self: *HTTPClient, url: []const u8, response: *ClientResponse) !void {
-        var req = try ClientRequest.init(self.allocator, .HEAD, url);
-        defer req.deinit();
-        
-        try self.execute_request(&req, response);
-    }
-
-    pub fn patch(self: *HTTPClient, url: []const u8, body: []const u8) !ClientResponse {
-        _ = self;
-        _ = url;
-        _ = body;
-        @panic("Not implemented");
-    }
-
-    // Advanced method
-    pub fn request(self: *HTTPClient, req: ClientRequest) !ClientResponse {
-        _ = self;
-        _ = req;
-        @panic("Not implemented");
+    // Main send method - this is the only way to make requests
+    pub fn send(self: *HTTPClient, request: *ClientRequest, response: *ClientResponse) !void {
+        try self.send_request(request, response);
     }
 
     // Internal methods
-    fn execute_request_no_redirect(self: *HTTPClient, req: *ClientRequest, response: *ClientResponse) !void {
+    fn send_request_no_redirect(self: *HTTPClient, req: *ClientRequest, response: *ClientResponse) !void {
         // Add default headers if they exist
         if (self.default_headers) |headers| {
             var it = headers.iterator();
@@ -215,8 +171,8 @@ pub const HTTPClient = struct {
         
     }
     
-    fn execute_request(self: *HTTPClient, req: *ClientRequest, response: *ClientResponse) !void {
-        try self.execute_request_no_redirect(req, response);
+    fn send_request(self: *HTTPClient, req: *ClientRequest, response: *ClientResponse) !void {
+        try self.send_request_no_redirect(req, response);
         
         // Handle redirects if enabled
         if (self.follow_redirects and response.is_redirect()) {
@@ -323,12 +279,12 @@ pub const HTTPClient = struct {
                 _ = new_req.set_body(b);
             }
             
-            // Finally execute (without redirect handling to avoid recursion)
+            // Finally send (without redirect handling to avoid recursion)
             // Need to create a temporary response for intermediate redirects
             var temp_response = ClientResponse.init(self.allocator);
             defer temp_response.deinit();
             
-            try self.execute_request_no_redirect(&new_req, &temp_response);
+            try self.send_request_no_redirect(&new_req, &temp_response);
             
             // Copy temp_response to response
             response.deinit();

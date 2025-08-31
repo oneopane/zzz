@@ -229,59 +229,78 @@ test "parse redirect response" {
 ---
 
 ### Phase 5: Basic HTTP Client 🚀
-**Status:** ✅ Complete  
-**Files:** `src/http/client/client.zig`
+**Status:** ✅ Complete (Refactored to send pattern)  
+**Files:** `src/http/client/client.zig`, `src/http/client/request.zig`
 
 #### Implemented
 - ✅ `HTTPClient.init()` / `deinit()` - Client lifecycle with proper resource management
-- ✅ `HTTPClient.execute_request()` - Single request execution without pooling
-- ✅ `HTTPClient.get()` - Simple GET request with full response handling
-- ✅ `HTTPClient.head()` - HEAD request without body
+- ✅ `HTTPClient.send()` - Single unified method for all requests (no hidden allocations)
+- ✅ `ClientRequest.get()`, `.post()`, `.put()`, etc. - Convenience constructors
+- ✅ `ClientRequest.builder()` - RequestBuilder pattern for complex requests
+- ✅ `RequestBuilder` - Fluent API with method chaining
 - ✅ Error handling for network failures and stream errors
 - ✅ Redirect following with configurable limits
 - ✅ Support for chunked encoding and variable content lengths
+- ✅ Fixed memory leaks in header parsing
+- ✅ Explicit ownership model - caller owns both request and response
 
 #### Verification
 ```zig
-test "first real HTTP GET request" {
+test "simple HTTP GET request" {
     var client = try HTTPClient.init(allocator, runtime);
     defer client.deinit();
     
-    const response = try client.get("http://httpbin.org/get");
+    // Caller owns both request and response
+    var req = try ClientRequest.get(allocator, "http://httpbin.org/get");
+    defer req.deinit();
+    
+    var response = ClientResponse.init(allocator);
     defer response.deinit();
+    
+    try client.send(&req, &response);
     
     try expect(response.is_success());
     try expect(response.get_header("Content-Type") != null);
 }
 
-test "HTTP HEAD request" {
+test "complex request with builder" {
     var client = try HTTPClient.init(allocator, runtime);
     defer client.deinit();
     
-    const response = try client.head("http://httpbin.org/status/200");
+    // Builder pattern for complex requests
+    var builder = ClientRequest.builder(allocator);
+    defer builder.deinit();
+    
+    var req = try builder
+        .post("https://api.example.com/v1/users", body)
+        .header("Authorization", "Bearer token")
+        .header("Content-Type", "application/json")
+        .timeout(30000)
+        .build();
+    defer req.deinit();
+    
+    var response = ClientResponse.init(allocator);
     defer response.deinit();
     
-    try expect(response.is_success());
-    try expect(response.body == null); // HEAD has no body
+    try client.send(&req, &response);
 }
 ```
 
-**User Benefit:** Can make actual HTTP GET/HEAD requests! First working client.
+**User Benefit:** No hidden allocations! Explicit ownership for both requests and responses, with ergonomic builder pattern for complex cases.
 
 ---
 
 ### Phase 6: POST and Body Handling 📝
 **Status:** ⏳ Pending  
-**Files:** Update `client.zig`, `request.zig`, `response.zig`
+**Files:** Update `request.zig`, `response.zig`
 
 #### Implement
-- `HTTPClient.post()` - POST with body
-- `HTTPClient.put()` - PUT with body
-- `HTTPClient.patch()` - PATCH with body
-- `HTTPClient.delete()` - DELETE request
-- `ClientRequest.set_json()` - JSON body helper
-- `ClientResponse.json()` - Parse JSON response
-- `ClientResponse.text()` - Get body as text
+- ✅ `ClientRequest.post()`, `.put()`, `.patch()` - Convenience constructors (already done)
+- ✅ `RequestBuilder` HTTP method helpers (already done)
+- `ClientRequest.set_json()` - JSON body serialization (partially done)
+- `ClientResponse.json()` - Parse JSON response (already exists)
+- `ClientResponse.text()` - Get body as text (already exists)
+- Actual JSON serialization in `set_json()`
 
 #### Verification
 ```zig
@@ -290,8 +309,14 @@ test "POST request with JSON" {
     defer client.deinit();
     
     const json_body = "{\"name\": \"Test User\"}";
-    const response = try client.post("http://httpbin.org/post", json_body);
+    var req = try ClientRequest.post(allocator, "http://httpbin.org/post", json_body);
+    defer req.deinit();
+    _ = try req.set_header("Content-Type", "application/json");
+    
+    var response = ClientResponse.init(allocator);
     defer response.deinit();
+    
+    try client.send(&req, &response);
     
     try expect(response.is_success());
     
@@ -305,13 +330,23 @@ test "POST request with JSON" {
     try expect(eql(result.data, json_body));
 }
 
-test "PUT request" {
+test "PUT request with builder" {
     var client = try HTTPClient.init(allocator, runtime);
     defer client.deinit();
     
-    const response = try client.put("http://httpbin.org/put", "updated data");
+    var builder = ClientRequest.builder(allocator);
+    defer builder.deinit();
+    
+    var req = try builder
+        .put("http://httpbin.org/put", "updated data")
+        .header("Content-Type", "text/plain")
+        .build();
+    defer req.deinit();
+    
+    var response = ClientResponse.init(allocator);
     defer response.deinit();
     
+    try client.send(&req, &response);
     try expect(response.is_success());
 }
 ```
@@ -536,6 +571,9 @@ zig build run-example-connection-pool
 3. **Explicit Policies**: Make decisions explicit (e.g., PortPolicy) rather than hidden defaults
 4. **Query Parameters**: Separate module for building complex API queries programmatically
 5. **Connection Pooling**: Client-specific pooling (different from server's ephemeral connections)
+6. **No Hidden Allocations**: Single `send()` method with explicit request/response ownership
+7. **RequestBuilder Pattern**: Fluent API for complex requests without hiding allocations
+8. **Explicit Ownership**: Caller owns both request and response objects (Zig philosophy)
 
 ### Module Organization
 - `url.zig` - Free functions operating on `std.Uri` for HTTP-specific needs
@@ -555,7 +593,7 @@ zig build run-example-connection-pool
 | Phase 2: Basic Connection | ✅ Complete | 100% | TCP connection implemented with tardy, tests passing |
 | Phase 3: Request Serialization | ✅ Complete | 100% | All methods implemented, 9 tests passing |
 | Phase 4: Response Parsing | ✅ Complete | 100% | All methods implemented, 9 tests passing |
-| Phase 5: Basic HTTP Client | ✅ Complete | 100% | Core client implemented, tests added |
+| Phase 5: Basic HTTP Client | ✅ Complete | 100% | Refactored to send pattern with RequestBuilder |
 | Phase 6: POST Support | ⏳ Pending | 0% | |
 | Phase 7: HTTPS Support | ⏳ Pending | 0% | |
 | Phase 8: Connection Pooling | ⏳ Pending | 0% | |
@@ -571,9 +609,35 @@ zig build run-example-connection-pool
 
 ## Implementation Log
 
+### Phase 5 Third Refactoring: Rename execute to send (2025-08-31)
+- ✅ Renamed `execute()` method to `send()` for better HTTP semantics
+- ✅ Updated internal methods: `execute_request` → `send_request`
+- ✅ Updated examples and documentation to use new API
+- **Key Change**: More intuitive method name that aligns with HTTP terminology
+
+### Phase 5 Second Refactoring: Execute-Only Pattern (2025-08-30)
+- ✅ Refactored from convenience methods to single `execute()` method (now `send()`)
+- ✅ Implemented RequestBuilder with fluent API for complex requests
+- ✅ Added convenience constructors: `ClientRequest.get()`, `.post()`, etc.
+- ✅ Removed all hidden allocations - caller owns both request and response
+- ✅ Builder pattern with method chaining for ergonomic API
+- **Key Change**: No hidden allocations, follows Zig philosophy
+- **API Design**: One execution path through `client.send(&request, &response)`
+- **Pattern**: Explicit ownership for both request and response objects
+
+### Phase 5 First Refactoring: Memory Management Fix (2025-08-30)
+- ✅ Fixed memory leaks in ClientResponse header parsing
+- ✅ Refactored API from returning responses to _into pattern
+- ✅ Changed methods: get() → get_into(), head() → head_into()
+- ✅ Removed reset() method in favor of simple init/deinit lifecycle
+- ✅ Updated example code to use new ownership model
+- **Key Fix**: Headers are now properly freed in deinit()
+- **API Change**: Caller now owns response object (explicit ownership)
+- **Pattern**: Follows Zig stdlib convention of allocation at same scope as deallocation
+
 ### Phase 5: Basic HTTP Client (Completed 2025-08-30)
 - ✅ Implemented HTTPClient struct with init/deinit lifecycle management
-- ✅ Created execute_request() for single request execution without pooling
+- ✅ Created send_request() for single request execution without pooling
 - ✅ Implemented get() and head() methods for simple HTTP requests
 - ✅ Added comprehensive error handling for network failures
 - ✅ Implemented redirect following with configurable limits (max_redirects)
@@ -622,5 +686,5 @@ zig build run-example-connection-pool
 
 ---
 
-*Last Updated: 2025-08-29*  
+*Last Updated: 2025-08-31*  
 *Estimated Total Implementation Time: 2-3 weeks for core features (Phases 1-8)*

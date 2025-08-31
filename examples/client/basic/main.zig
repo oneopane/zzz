@@ -37,12 +37,16 @@ fn run_client(rt: *tardy.Runtime, allocator: std.mem.Allocator) !void {
     const url = "http://httpbin.org/get";
     std.debug.print("Fetching: {s}\n", .{url});
     
+    // Create request object that we own
+    var request = try zzz.HTTP.Client.ClientRequest.get(allocator, url);
+    defer request.deinit();
+    
     // Create response object that we own
     var response = zzz.HTTP.Client.ClientResponse.init(allocator);
     defer response.deinit();
     
-    // Execute request into our response
-    try client.get_into(url, &response);
+    // Send the request
+    try client.send(&request, &response);
     
     // Print response status
     std.debug.print("Status: {} {s}\n", .{ 
