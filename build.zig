@@ -38,6 +38,8 @@ pub fn build(b: *std.Build) void {
     add_example(b, "client/https", "client_https", true, target, optimize, zzz);
     add_example(b, "client/pool", "client_pool", false, target, optimize, zzz);
     add_example(b, "client/http_client", "http_client", false, target, optimize, zzz);
+    add_example(b, "client/streaming", "client_streaming", false, target, optimize, zzz);
+    add_example(b, "client/sse", "client_sse", false, target, optimize, zzz);
     add_example(b, "client/http_client_simple", "http_client_simple", false, target, optimize, zzz);
 
     if (target.result.os.tag != .windows) {

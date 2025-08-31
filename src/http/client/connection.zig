@@ -175,7 +175,8 @@ pub const Connection = struct {
         self.state = .connected;
     }
 
-    pub fn recv_all(self: *Connection, runtime: *Runtime, buffer: []u8) !usize {
+    /// Receive some bytes (may return less than buffer size)
+    pub fn recv_some(self: *Connection, runtime: *Runtime, buffer: []u8) !usize {
         if (self.state != .connected and self.state != .active) {
             return error.NotConnected;
         }
@@ -187,14 +188,22 @@ pub const Connection = struct {
             .secure => |*secure| try secure.recv(runtime, buffer),
         };
         
+        // Note: recv_some returns 0 for EOF, doesn't error
         if (bytes_read == 0) {
             self.state = .closed;
-            return error.ConnectionClosed;
+        } else {
+            self.last_used = std.time.milliTimestamp();
+            self.state = .connected;
         }
         
-        self.last_used = std.time.milliTimestamp();
-        self.state = .connected;
-        
+        return bytes_read;
+    }
+    
+    pub fn recv_all(self: *Connection, runtime: *Runtime, buffer: []u8) !usize {
+        const bytes_read = try self.recv_some(runtime, buffer);
+        if (bytes_read == 0) {
+            return error.ConnectionClosed;
+        }
         return bytes_read;
     }
     

@@ -13,6 +13,17 @@ pub const HTTPProxy = @import("proxy.zig").HTTPProxy;
 pub const ProxyConfig = @import("proxy.zig").ProxyConfig;
 pub const Upstream = @import("proxy.zig").Upstream;
 
+// Streaming support
+pub const streaming = @import("streaming.zig");
+pub const sse_parser = @import("sse_parser.zig");
+pub const chunked_parser = @import("chunked_parser.zig");
+pub const StreamingResponse = streaming.StreamingResponse;
+pub const StreamIterator = streaming.StreamIterator;
+pub const StreamConfig = streaming.StreamConfig;
+pub const SSEParser = sse_parser.SSEParser;
+pub const SSEMessage = sse_parser.SSEMessage;
+pub const ChunkedParser = chunked_parser.ChunkedParser;
+
 // Re-export commonly used types for convenience
 pub const Client = HTTPClient;
 pub const Request = ClientRequest;

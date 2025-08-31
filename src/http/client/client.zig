@@ -8,6 +8,13 @@ const PoolStats = connection_pool.PoolStats;
 const ClientRequest = @import("request.zig").ClientRequest;
 const ClientResponse = @import("response.zig").ClientResponse;
 const AnyCaseStringMap = @import("../../core/any_case_string_map.zig").AnyCaseStringMap;
+const streaming = @import("streaming.zig");
+const StreamingResponse = streaming.StreamingResponse;
+const StreamIterator = streaming.StreamIterator;
+const StreamConfig = streaming.StreamConfig;
+const ChunkCallback = streaming.ChunkCallback;
+const SSECallback = streaming.SSECallback;
+const SSEMessage = @import("sse_parser.zig").SSEMessage;
 
 pub const HTTPClient = struct {
     runtime: *Runtime,
@@ -42,6 +49,187 @@ pub const HTTPClient = struct {
     // Main send method - this is the only way to make requests
     pub fn send(self: *HTTPClient, request: *ClientRequest, response: *ClientResponse) !void {
         try self.send_request(request, response);
+    }
+    
+    // Streaming methods for real-time data processing
+    
+    /// Send a request and stream the response with a chunk callback
+    pub fn send_streaming(
+        self: *HTTPClient,
+        request: *ClientRequest,
+        callback: ChunkCallback,
+        user_context: ?*anyopaque,
+        config: StreamConfig,
+    ) !void {
+        // Streaming connections bypass the pool
+        var conn = try self.create_direct_connection(request);
+        defer {
+            conn.deinit();
+            self.allocator.destroy(conn);
+        }
+        
+        // Send request and get initial response
+        var response = ClientResponse.init(self.allocator);
+        try self.send_request_streaming(request, &response, conn);
+        
+        // Get initial body bytes if any
+        const initial = if (response.read_buf) |buf|
+            buf[response.body_start..]
+        else
+            &[_]u8{};
+        
+        // Create streaming response handler
+        var stream = try StreamingResponse.init(
+            self.allocator,
+            conn,
+            self.runtime,
+            response,
+            initial,
+            response.transfer,
+            config,
+        );
+        defer stream.deinit();
+        
+        // Stream chunks with callback
+        try stream.stream_chunks(callback, user_context);
+    }
+    
+    /// Low-level SSE streaming - caller owns all memory
+    /// Arena is reset per message, slices are valid only during callback
+    pub fn send_streaming_sse_raw(
+        self: *HTTPClient,
+        request: *ClientRequest,
+        callback: SSECallback,
+        user_context: ?*anyopaque,
+        config: StreamConfig,
+        arena: *std.heap.ArenaAllocator,
+        message: *SSEMessage,
+        general_allocator: ?std.mem.Allocator,
+    ) !void {
+        // Streaming connections bypass the pool
+        var conn = try self.create_direct_connection(request);
+        defer {
+            conn.deinit();
+            self.allocator.destroy(conn);
+        }
+        
+        // Send request and get initial response
+        var response = ClientResponse.init(self.allocator);
+        try self.send_request_streaming(request, &response, conn);
+        
+        // Get initial body bytes if any
+        const initial = if (response.read_buf) |buf|
+            buf[response.body_start..]
+        else
+            &[_]u8{};
+        
+        // Create streaming response handler
+        var stream = try StreamingResponse.init(
+            self.allocator,
+            conn,
+            self.runtime,
+            response,
+            initial,
+            response.transfer,
+            config,
+        );
+        defer stream.deinit();
+        
+        // Stream SSE messages with raw API
+        try stream.stream_sse_raw(callback, user_context, arena, message, general_allocator);
+    }
+    
+    /// High-level SSE streaming with managed memory
+    pub fn send_streaming_sse(
+        self: *HTTPClient,
+        request: *ClientRequest,
+        callback: SSECallback,
+        user_context: ?*anyopaque,
+        config: StreamConfig,
+        arena_buffer_size: usize,
+    ) !void {
+        // Streaming connections bypass the pool
+        var conn = try self.create_direct_connection(request);
+        defer {
+            conn.deinit();
+            self.allocator.destroy(conn);
+        }
+        
+        // Send request and get initial response
+        var response = ClientResponse.init(self.allocator);
+        try self.send_request_streaming(request, &response, conn);
+        
+        // Get initial body bytes if any
+        const initial = if (response.read_buf) |buf|
+            buf[response.body_start..]
+        else
+            &[_]u8{};
+        
+        // Create streaming response handler
+        var stream = try StreamingResponse.init(
+            self.allocator,
+            conn,
+            self.runtime,
+            response,
+            initial,
+            response.transfer,
+            config,
+        );
+        defer stream.deinit();
+        
+        // Stream SSE messages with convenience API
+        try stream.stream_sse(callback, user_context, arena_buffer_size);
+    }
+    
+    /// Send a request and return a stream iterator for pull-based consumption
+    pub fn send_streaming_iter(
+        self: *HTTPClient,
+        request: *ClientRequest,
+        config: StreamConfig,
+    ) !*StreamIterator {
+        // Allocate connection that will be owned by the iterator
+        var conn = try self.allocator.create(Connection);
+        errdefer self.allocator.destroy(conn);
+        
+        // Initialize connection
+        conn.* = try self.create_connection_from_request(request);
+        errdefer conn.deinit();
+        
+        // Connect
+        try conn.connect(self.runtime);
+        
+        // Send request and get initial response
+        var response = ClientResponse.init(self.allocator);
+        errdefer response.deinit();
+        try self.send_request_streaming(request, &response, conn);
+        
+        // Get initial body bytes if any
+        const initial = if (response.read_buf) |buf|
+            buf[response.body_start..]
+        else
+            &[_]u8{};
+        
+        // Create and return stream iterator (takes ownership of connection and response)
+        const iter = try self.allocator.create(StreamIterator);
+        iter.* = try StreamIterator.init(
+            self.allocator,
+            conn,
+            self.runtime,
+            response,
+            initial,
+            response.transfer,
+            config,
+        );
+        return iter;
+    }
+    
+    /// Destroy a stream iterator created by send_streaming_iter
+    pub fn destroy_stream_iterator(self: *HTTPClient, iter: *StreamIterator) void {
+        const conn = iter.connection;
+        iter.deinit();
+        self.allocator.destroy(iter);
+        conn.deinit();
+        self.allocator.destroy(conn);
     }
     
     // Connection pool configuration
@@ -346,6 +534,106 @@ pub const HTTPClient = struct {
         
         if (redirect_count >= self.max_redirects) {
             return error.TooManyRedirects;
+        }
+    }
+    
+    // Helper methods for streaming support
+    
+    /// Create a direct connection (bypassing pool) for streaming
+    fn create_direct_connection(self: *HTTPClient, req: *ClientRequest) !*Connection {
+        const conn = try self.allocator.create(Connection);
+        errdefer self.allocator.destroy(conn);
+        
+        conn.* = try self.create_connection_from_request(req);
+        errdefer conn.deinit();
+        
+        try conn.connect(self.runtime);
+        return conn;
+    }
+    
+    /// Create a connection object from request URI
+    fn create_connection_from_request(self: *HTTPClient, req: *ClientRequest) !Connection {
+        // Parse the host and port from the URI
+        var host_buf: [256]u8 = undefined;
+        const host_component = req.uri.host orelse return error.NoHostInURI;
+        const host_str = switch (host_component) {
+            .raw => |raw| raw,
+            .percent_encoded => |encoded| std.Uri.percentDecodeBackwards(&host_buf, encoded),
+        };
+        
+        const default_port: u16 = if (std.ascii.eqlIgnoreCase(req.uri.scheme, "https")) 443 else 80;
+        const port = req.uri.port orelse default_port;
+        const use_tls = std.ascii.eqlIgnoreCase(req.uri.scheme, "https");
+        
+        return try Connection.init(self.allocator, host_str, port, use_tls);
+    }
+    
+    /// Send request for streaming (only headers and initial response)
+    fn send_request_streaming(
+        self: *HTTPClient,
+        req: *ClientRequest,
+        response: *ClientResponse,
+        conn: *Connection,
+    ) !void {
+        // Add default headers if they exist
+        if (self.default_headers) |headers| {
+            var it = headers.iterator();
+            while (it.next()) |entry| {
+                // Don't override existing headers
+                if (!req.headers.contains(entry.key_ptr.*)) {
+                    _ = try req.set_header(entry.key_ptr.*, entry.value_ptr.*);
+                }
+            }
+        }
+        
+        // Serialize and send the request
+        var request_buf = try std.ArrayList(u8).initCapacity(self.allocator, 4096);
+        defer request_buf.deinit(self.allocator);
+        
+        try req.serialize_full(request_buf.writer(self.allocator));
+        try conn.send_all(self.runtime, request_buf.items);
+        
+        // Read headers incrementally until we find CRLFCRLF
+        var read_buf = try std.ArrayList(u8).initCapacity(self.allocator, 4096);
+        errdefer read_buf.deinit(self.allocator);
+        
+        while (true) {
+            // Ensure we have space to read more
+            if (read_buf.capacity - read_buf.items.len < 1024) {
+                try read_buf.ensureTotalCapacity(self.allocator, read_buf.capacity * 2);
+            }
+            
+            // Read some bytes into available space
+            const available = read_buf.allocatedSlice()[read_buf.items.len..];
+            const n = try conn.recv_some(self.runtime, available);
+            
+            if (n == 0) {
+                read_buf.deinit(self.allocator);
+                return error.UnexpectedEof;
+            }
+            
+            read_buf.items.len += n;
+            
+            // Check if we have the header terminator
+            if (ClientResponse.find_header_end(read_buf.items)) |header_end| {
+                // Keep the buffer in the response
+                response.read_buf = try read_buf.toOwnedSlice(self.allocator);
+                response.header_end = header_end;
+                response.body_start = header_end;
+                
+                // Parse headers from the buffer
+                _ = try response.parse_headers(response.read_buf.?[0..header_end]);
+                
+                // Detect transfer encoding
+                response.transfer = response.detect_transfer_encoding();
+                break;
+            }
+            
+            // Limit header size to prevent unbounded growth
+            if (read_buf.items.len > 65536) {
+                read_buf.deinit(self.allocator);
+                return error.HeadersTooLarge;
+            }
         }
     }
 };

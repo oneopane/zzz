@@ -4,6 +4,13 @@ const Status = @import("../lib.zig").Status;
 const AnyCaseStringMap = @import("../../core/any_case_string_map.zig").AnyCaseStringMap;
 const CookieMap = @import("../common/cookie.zig").CookieMap;
 
+/// Transfer encoding type for response body
+pub const TransferEncoding = enum {
+    identity,  // Plain body with Content-Length
+    chunked,   // Chunked transfer encoding
+    sse,       // Server-Sent Events (detected via Content-Type)
+};
+
 pub const ClientResponse = struct {
     allocator: std.mem.Allocator,
     status: Status,
@@ -12,6 +19,12 @@ pub const ClientResponse = struct {
     body: ?[]const u8 = null,
     version: std.http.Version = .@"HTTP/1.1",
     owns_body: bool = false,
+    
+    // Buffer management for streaming
+    read_buf: ?[]u8 = null,       // Raw bytes read (owned)
+    header_end: usize = 0,         // Index after "\r\n\r\n"
+    body_start: usize = 0,         // Start of body data in read_buf
+    transfer: TransferEncoding = .identity,
 
     pub fn init(allocator: std.mem.Allocator) ClientResponse {
         return .{
@@ -26,6 +39,11 @@ pub const ClientResponse = struct {
     }
 
     pub fn deinit(self: *ClientResponse) void {
+        // Free read buffer if owned
+        if (self.read_buf) |buf| {
+            self.allocator.free(buf);
+        }
+        
         // Free all allocated header strings
         var it = self.headers.iterator();
         while (it.next()) |entry| {
@@ -188,6 +206,33 @@ pub const ClientResponse = struct {
         // It should be the last encoding if multiple are specified
         return std.mem.indexOf(u8, transfer_encoding, "chunked") != null;
     }
+    
+    /// Detect transfer encoding from headers
+    pub fn detect_transfer_encoding(self: *ClientResponse) TransferEncoding {
+        // Check for SSE content type
+        if (self.get_header("Content-Type")) |ct| {
+            if (std.mem.indexOf(u8, ct, "text/event-stream") != null) {
+                return .sse;
+            }
+        }
+        
+        // Check for chunked encoding
+        if (self.is_chunked()) {
+            return .chunked;
+        }
+        
+        // Default to identity (plain with Content-Length)
+        return .identity;
+    }
+    
+    /// Find the end of headers (CRLF CRLF) in a buffer
+    pub fn find_header_end(buffer: []const u8) ?usize {
+        const needle = "\r\n\r\n";
+        if (std.mem.indexOf(u8, buffer, needle)) |pos| {
+            return pos + needle.len;  // Return index after the terminator
+        }
+        return null;
+    }
 
     pub fn is_success(self: *const ClientResponse) bool {
         const status_code = @intFromEnum(self.status);
@@ -201,6 +246,28 @@ pub const ClientResponse = struct {
 
     pub fn get_location(self: *const ClientResponse) ?[]const u8 {
         return self.get_header("Location");
+    }
+    
+    pub fn is_event_stream(self: *const ClientResponse) bool {
+        const content_type = self.get_header("Content-Type") orelse return false;
+        return std.mem.indexOf(u8, content_type, "text/event-stream") != null;
+    }
+    
+    pub fn is_streaming_response(self: *const ClientResponse) bool {
+        // Check for common streaming indicators
+        if (self.is_event_stream()) return true;
+        if (self.is_chunked()) return true;
+        
+        // Check for no content length (often indicates streaming)
+        if (self.get_content_length() == null) {
+            // But not if it's a HEAD response or 204/304
+            const status_code = @intFromEnum(self.status);
+            if (status_code != 204 and status_code != 304) {
+                return true;
+            }
+        }
+        
+        return false;
     }
 
     // Body handling
