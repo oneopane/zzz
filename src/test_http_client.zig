@@ -9,17 +9,16 @@ const testing = std.testing;
 // As a workaround, we're temporarily disabling the HTTP client tests until the issue is resolved.
 // The crash occurs in both connection.zig and request.zig tests.
 test "HTTP Client modules" {
-    // FIXME: Re-enable when test runner issue is resolved
-    // testing.refAllDecls(@import("./http/client/connection.zig"));
-    // testing.refAllDecls(@import("./http/client/request.zig"));
-    // testing.refAllDecls(@import("./http/client/response.zig"));
-    // testing.refAllDecls(@import("./http/client/client.zig"));
+    // Import tests from the tests/ directory
+    testing.refAllDecls(@import("./http/client/tests/client.zig"));
+    testing.refAllDecls(@import("./http/client/tests/streaming.zig"));
     
-    // For now, just verify the modules compile
+    // Also verify the main modules compile
     _ = @import("./http/client/connection.zig");
     _ = @import("./http/client/connection_pool.zig");
     _ = @import("./http/client/request.zig");
     _ = @import("./http/client/response.zig");
     _ = @import("./http/client/client.zig");
-    try testing.expect(true);
+    _ = @import("./http/client/streaming.zig");
+    _ = @import("./http/client/sse_parser.zig");
 }

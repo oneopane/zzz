@@ -1,8 +1,8 @@
 const std = @import("std");
-const streaming = @import("streaming.zig");
-const SSEParser = @import("sse_parser.zig").SSEParser;
-const SSEMessage = @import("sse_parser.zig").SSEMessage;
-const ClientResponse = @import("response.zig").ClientResponse;
+const streaming = @import("../streaming.zig");
+const SSEParser = @import("../sse_parser.zig").SSEParser;
+const SSEMessage = @import("../sse_parser.zig").SSEMessage;
+const ClientResponse = @import("../response.zig").ClientResponse;
 
 test "StreamConfig defaults" {
     const config = streaming.StreamConfig{};
@@ -74,7 +74,7 @@ test "SSE parser handles OpenAI-style messages" {
         for (messages.items) |*msg| {
             msg.deinit(allocator);
         }
-        messages.deinit();
+        messages.deinit(allocator);
     }
     
     // Simulate OpenAI streaming response format
@@ -106,7 +106,7 @@ test "SSE parser handles Anthropic-style messages" {
         for (messages.items) |*msg| {
             msg.deinit(allocator);
         }
-        messages.deinit();
+        messages.deinit(allocator);
     }
     
     // Simulate Anthropic Claude streaming response format
@@ -154,7 +154,7 @@ test "SSE parser handles fragmented JSON data" {
         for (messages.items) |*msg| {
             msg.deinit(allocator);
         }
-        messages.deinit();
+        messages.deinit(allocator);
     }
     
     // First chunk has partial JSON
@@ -182,7 +182,7 @@ test "SSE parser handles ping messages" {
         for (messages.items) |*msg| {
             msg.deinit(allocator);
         }
-        messages.deinit();
+        messages.deinit(allocator);
     }
     
     // Some SSE servers send ping messages
