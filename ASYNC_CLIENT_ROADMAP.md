@@ -462,16 +462,87 @@ test "multiple hosts" {
 
 ---
 
-### Phase 9: Advanced Features 🎯
+### Phase 9: SSE/Streaming Support 🌊
+**Status:** ⏳ Pending  
+**Files:** `src/http/client/sse_parser.zig`, `src/http/client/streaming.zig`, update `client.zig`
+
+#### Implement
+- **SSE Parser**: Parse Server-Sent Events from response stream
+- **Streaming Response Handler**: Process responses chunk-by-chunk without buffering
+- **Callback Interface**: Allow user-provided callbacks for each chunk/event
+- **Iterator Pattern**: Alternative to callbacks for consuming streams
+- **Event Types**: Support all SSE event types (data, event, id, retry)
+- **Reconnection Support**: Handle Last-Event-ID for SSE reconnection
+- **Partial Message Handling**: Buffer incomplete messages across chunks
+
+#### Verification
+```zig
+test "SSE parsing" {
+    var parser = SSEParser.init(allocator);
+    defer parser.deinit();
+    
+    const chunk = "data: {\"message\": \"Hello\"}\n\n";
+    const event = try parser.parse_chunk(chunk);
+    
+    try expect(event != null);
+    try expect(std.mem.eql(u8, event.?.data.?, "{\"message\": \"Hello\"}"));
+}
+
+test "streaming response with callback" {
+    var client = try HTTPClient.init(allocator, runtime);
+    defer client.deinit();
+    
+    var req = try ClientRequest.post(allocator, "https://api.openai.com/v1/chat/completions", body);
+    defer req.deinit();
+    
+    var message_count: usize = 0;
+    try client.send_streaming(&req, struct {
+        fn on_event(event: SSEMessage) void {
+            // Process each SSE event as it arrives
+            if (event.data) |data| {
+                message_count += 1;
+                std.debug.print("Received: {s}\n", .{data});
+            }
+        }
+    }.on_event);
+    
+    try expect(message_count > 0);
+}
+
+test "streaming with iterator pattern" {
+    var client = try HTTPClient.init(allocator, runtime);
+    defer client.deinit();
+    
+    var req = try ClientRequest.get(allocator, "http://httpbin.org/stream/10");
+    defer req.deinit();
+    
+    var stream = try client.send_streaming_iter(&req);
+    defer stream.deinit();
+    
+    var line_count: usize = 0;
+    while (try stream.next()) |chunk| {
+        line_count += 1;
+        // Process each chunk
+    }
+    
+    try expect(line_count == 10);
+}
+```
+
+**User Benefit:** Real-time streaming responses for LLM APIs, Server-Sent Events, and chunked data processing without memory buffering.
+
+---
+
+### Phase 10: Advanced Features 🎯
 **Status:** ⏳ Pending  
 **Files:** Various updates
 
 #### Implement
-- **Redirect Following**: Auto-follow 3xx responses
+- **Redirect Following**: Auto-follow 3xx responses (already partially done)
 - **Timeout Support**: Request timeouts
 - **Cookie Jar**: Automatic cookie handling
-- **Request Builder**: Fluent API for building requests
-- **Chunked Encoding**: Support chunked transfer encoding
+- **Request Builder**: Fluent API for building requests (already done)
+- **Chunked Encoding**: Support chunked transfer encoding (partially done)
 - **Compression**: gzip/deflate support
 - **Proxy Support**: HTTP proxy integration
 
@@ -501,19 +572,23 @@ test "request timeout" {
     try expect(result == error.Timeout);
 }
 
-test "request builder pattern" {
+test "compression support" {
     var client = try HTTPClient.init(allocator, runtime);
     defer client.deinit();
     
-    var request = RequestBuilder.init(allocator)
-        .method(.POST)
-        .url("https://api.example.com/users")
-        .header("Authorization", "Bearer token123")
-        .json(.{ .name = "John", .age = 30 })
-        .build();
+    var req = try ClientRequest.get(allocator, "http://httpbin.org/gzip");
+    defer req.deinit();
+    try req.set_header("Accept-Encoding", "gzip, deflate");
     
-    const response = try client.request(request);
+    var response = ClientResponse.init(allocator);
     defer response.deinit();
+    
+    try client.send(&req, &response);
+    
+    // Response should be automatically decompressed
+    try expect(response.is_success());
+    const body = try response.json(struct { gzipped: bool });
+    try expect(body.gzipped == true);
 }
 ```
 
@@ -590,6 +665,8 @@ zig build run-example-connection-pool
 - `request.zig` - Request building using `std.Uri` directly
 - `response.zig` - Response parsing (client-specific)
 - `client.zig` - High-level HTTP client API
+- `sse_parser.zig` - Server-Sent Events parser for streaming responses
+- `streaming.zig` - Streaming response handler and iterator
 - `proxy.zig` - HTTP proxy support
 
 ## Current Status
@@ -604,16 +681,21 @@ zig build run-example-connection-pool
 | Phase 6: POST Support | ✅ Complete | 100% | JSON serialization, all HTTP methods, builder pattern |
 | Phase 7: HTTPS Support | ✅ Complete | 100% | BearSSL integration, all methods support TLS |
 | Phase 8: Connection Pooling | ✅ Complete | 100% | Per-host pools, keep-alive, configurable limits |
-| Phase 9: Advanced Features | ⏳ Pending | 0% | |
+| Phase 9: SSE/Streaming Support | ⏳ Pending | 0% | Critical for LLM API integration |
+| Phase 10: Advanced Features | ⏳ Pending | 0% | Redirect following partially done |
 
 ## Next Steps
 
-1. **Phase 9 Implementation**: Advanced features (redirect following done, need compression, cookies, proxy)
-2. **Timeout Support**: Add configurable request timeouts
-3. **Chunked Encoding**: Enhanced support for chunked transfer encoding
-4. **Compression**: gzip/deflate support for request and response bodies
-5. **Cookie Jar**: Automatic cookie handling for session management
-6. **Proxy Support**: HTTP/HTTPS proxy integration
+1. **Phase 9 Implementation**: SSE/Streaming support for real-time API responses
+   - SSE parser for Server-Sent Events
+   - Streaming response handler (no buffering)
+   - Callback and iterator patterns
+   - Support for LLM streaming APIs (OpenAI, Anthropic, etc.)
+2. **Phase 10 Implementation**: Advanced features
+   - **Timeout Support**: Add configurable request timeouts
+   - **Cookie Jar**: Automatic cookie handling for session management
+   - **Compression**: gzip/deflate support for request and response bodies
+   - **Proxy Support**: HTTP/HTTPS proxy integration (forward proxy with CONNECT)
 
 ## Implementation Log
 
