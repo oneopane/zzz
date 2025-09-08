@@ -1,0 +1,10 @@
+{
+  "roadmap_name": "mcp-integration",
+  "current_phase": "S1",
+  "phase_status": "pending",
+  "completed_phases": [],
+  "failed_attempts": 0,
+  "git_branch": null,
+  "last_updated": "2025-09-05T12:00:00Z",
+  "total_phases": 6
+}
